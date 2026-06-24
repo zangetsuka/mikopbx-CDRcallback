@@ -11,7 +11,6 @@ from flask import Flask, render_template, jsonify, request, send_file
 from flask_cors import CORS
 import io
 
-from callback.web_api import register_callback_api
 from database import db
 from config import CALL_TYPES, DATA_DIR
 
@@ -28,11 +27,6 @@ def index():
 def calls_page():
     """Страница со списком звонков"""
     return render_template('calls.html')
-
-@app.route('/callback')
-def callback_page():
-    """Страница управления обратным звонком"""
-    return render_template('callback.html')
 
 @app.route('/api/stats')
 def api_stats():
@@ -214,8 +208,6 @@ def main():
     print(f"   Нажмите Ctrl+C для остановки\n")
     
     app.run(host=host, port=port, debug=debug)
-
-register_callback_api(app)
 
 if __name__ == "__main__":
     main()

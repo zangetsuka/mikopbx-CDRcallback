@@ -1,6 +1,5 @@
 # Python
-
-**pycache**/
+__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -25,7 +24,6 @@ wheels/
 *.egg
 
 # Project specific
-
 data/
 *.db
 *.sqlite3
@@ -34,7 +32,6 @@ data/
 *.pid
 
 # IDE
-
 .vscode/
 .idea/
 *.swp
@@ -42,23 +39,21 @@ data/
 *~
 
 # OS
-
 .DS_Store
 Thumbs.db
 
 # Reports
-
 reports/
-*.html
 coverage/
 htmlcov/
 
 # Docker
-
 *.dockerignore
-[Dockerfile.dev](https://Dockerfile.dev)
+Dockerfile.dev
 
 # CI/CD
-
 .github/
 .gitlab/
+
+# Исключение для шаблонов
+!templates/*.html

@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="calls-page">
+    <div class="page-header">
+        <h1><i class="fas fa-list"></i> Список звонков</h1>
+        <div class="header-controls">
+            <select id="filterType" onchange="loadCalls()">
+                <option value="">Все типы</option>
+                <option value="no_answer">❌ Пропущенные</option>
+                <option value="voicemail">📨 Голосовая почта</option>
+            </select>
+            <input type="text" id="searchInput" placeholder="Поиск по номеру..." oninput="loadCalls()">
+            <button onclick="exportCSV()" class="btn-export">
+                <i class="fas fa-file-export"></i>
+                Экспорт
+            </button>
+        </div>
+    </div>
+    
+    <div class="calls-table-wrapper">
+        <table class="calls-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Время</th>
+                    <th>От</th>
+                    <th>Кому</th>
+                    <th>Тип</th>
+                    <th>Длит.</th>
+                    <th>VM Длит.</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody id="callsBody">
+                <tr><td colspan="8" class="loading">Загрузка...</td></tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="pagination" id="pagination">
+        <!-- Пагинация будет здесь -->
+    </div>
+</div>
+
+<!-- Модальное окно для деталей -->
+<div class="modal" id="callModal">
+    <div class="modal-content">
+        <span class="modal-close" onclick="closeModal()">&times;</span>
+        <div id="callDetails">
+            <!-- Загружается динамически -->
+        </div>
+    </div>
+</div>
+
+<script>
+let currentPage = 0;
+const pageSize = 20;
+let totalCalls = 0;
+
+async function loadCalls() {
+    const type = document.getElementById('filterType').value;
+    const search = document.getElementById('searchInput').value.trim();
+    
+    try {
+        const response = await fetch(`/api/calls?type=${type}&limit=${pageSize}&offset=${currentPage * pageSize}`);
+        const data = await response.json();
+        totalCalls = data.total;
+        renderCalls(data.calls);
+        renderPagination();
+    } catch (error) {
+        console.error('Error loading calls:', error);
+        document.getElementById('callsBody').innerHTML = '<tr><td colspan="8">Ошибка загрузки</td></tr>';
+    }
+}
+
+function renderCalls(calls) {
+    const tbody = document.getElementById('callsBody');
+    
+    if (calls.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="no-data">Нет звонков</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = calls.map(call => `
+        <tr>
+            <td>#${call.id}</td>
+            <td>${formatTime(call.start_time)}</td>
+            <td>${call.src_num || 'N/A'}</td>
+            <td>${call.dst_num || 'N/A'}</td>
+            <td>
+                <span class="badge ${call.call_type}">
+                    ${call.call_type === 'voicemail' ? '📨' : '❌'}
+                    ${call.call_type === 'voicemail' ? 'Голосовая' : 'Пропущенный'}
+                </span>
+            </td>
+            <td>${call.total_duration || 0}с</td>
+            <td>${call.voicemail_duration || 0}с</td>
+            <td>
+                <button onclick="showDetails(${call.id})" class="btn-detail">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderPagination() {
+    const totalPages = Math.ceil(totalCalls / pageSize);
+    const container = document.getElementById('pagination');
+    
+    if (totalPages <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    let html = '';
+    html += `<button onclick="goToPage(0)" ${currentPage === 0 ? 'disabled' : ''}>«</button>`;
+    
+    for (let i = 0; i < Math.min(totalPages, 10); i++) {
+        const page = i + Math.floor(currentPage / 10) * 10;
+        if (page < totalPages) {
+            html += `<button onclick="goToPage(${page})" class="${page === currentPage ? 'active' : ''}">${page + 1}</button>`;
+        }
+    }
+    
+    html += `<button onclick="goToPage(${totalPages - 1})" ${currentPage === totalPages - 1 ? 'disabled' : ''}>»</button>`;
+    container.innerHTML = html;
+}
+
+function goToPage(page) {
+    currentPage = page;
+    loadCalls();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function showDetails(callId) {
+    try {
+        const response = await fetch(`/api/call/${callId}`);
+        const data = await response.json();
+        
+        const modal = document.getElementById('callModal');
+        const details = document.getElementById('callDetails');
+        
+        details.innerHTML = `
+            <h2>Детали звонка #${data.id}</h2>
+            <div class="detail-grid">
+                <div><strong>Время:</strong> ${formatTime(data.start_time)}</div>
+                <div><strong>От:</strong> ${data.src_num || 'N/A'}</div>
+                <div><strong>Кому:</strong> ${data.dst_num || 'N/A'}</div>
+                <div><strong>DID:</strong> ${data.did || 'N/A'}</div>
+                <div><strong>Статус:</strong> ${data.disposition || 'N/A'}</div>
+                <div><strong>Тип:</strong> ${data.call_type === 'voicemail' ? '📨 Голосовая почта' : '❌ Пропущенный'}</div>
+                <div><strong>Длительность:</strong> ${data.total_duration || 0}с</div>
+                <div><strong>Голосовая почта:</strong> ${data.has_voicemail ? 'Да' : 'Нет'}</div>
+                <div><strong>Длит. VM:</strong> ${data.voicemail_duration || 0}с</div>
+                <div><strong>Сегментов:</strong> ${data.segment_count || 0}</div>
+            </div>
+            ${data.segments && data.segments.length > 0 ? `
+                <h3>Сегменты</h3>
+                <table class="segments-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Время</th>
+                            <th>От</th>
+                            <th>Кому</th>
+                            <th>Канал</th>
+                            <th>Длит.</th>
+                            <th>VM</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.segments.map(seg => `
+                            <tr>
+                                <td>${seg.segment_id}</td>
+                                <td>${formatTime(seg.start_time)}</td>
+                                <td>${seg.src_num || 'N/A'}</td>
+                                <td>${seg.dst_num || 'N/A'}</td>
+                                <td>${seg.dst_chan || 'N/A'}</td>
+                                <td>${seg.duration || 0}с</td>
+                                <td>${seg.is_voicemail ? '✅' : '❌'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            ` : ''}
+        `;
+        
+        modal.style.display = 'block';
+        
+    } catch (error) {
+        console.error('Error loading call details:', error);
+        alert('Ошибка загрузки деталей звонка');
+    }
+}
+
+function closeModal() {
+    document.getElementById('callModal').style.display = 'none';
+}
+
+// Закрытие по клику вне модального окна
+window.onclick = function(event) {
+    const modal = document.getElementById('callModal');
+    if (event.target === modal) {
+        modal.style.display = 'none';
+    }
+}
+
+async function exportCSV() {
+    window.location.href = '/api/export/csv';
+}
+
+// Инициализация
+loadCalls();
+</script>
+{% endblock %}

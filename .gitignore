@@ -1,0 +1,64 @@
+# Python
+
+**pycache**/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Project specific
+
+data/
+*.db
+*.sqlite3
+.env
+*.log
+*.pid
+
+# IDE
+
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+
+.DS_Store
+Thumbs.db
+
+# Reports
+
+reports/
+*.html
+coverage/
+htmlcov/
+
+# Docker
+
+*.dockerignore
+[Dockerfile.dev](https://Dockerfile.dev)
+
+# CI/CD
+
+.github/
+.gitlab/

@@ -24,8 +24,8 @@ Thumbs.db
 .DS_Store
 
 # --- Temp / diagnostic files (added during debugging) ---
-_*.py
-_*.json
+_[!_]*.py
+_[!_]*.json
 _backup_*/
 _backup_mikoapi/
 server_*.log

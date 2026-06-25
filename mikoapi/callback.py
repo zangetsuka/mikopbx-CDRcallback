@@ -126,7 +126,7 @@ class SimpleAMIClient:
                 headers[k.strip()] = v.strip()
         return headers
 
-    def _action(self, fields, variables=None) -> dict:
+    def _action(self, fields, variables=None, read_timeout=None) -> dict:
         with self._lock:
             self._counter += 1
             action_id = str(self._counter)
@@ -139,12 +139,27 @@ class SimpleAMIClient:
                     lines.append("Variable: %s=%s" % (vk, vv))
             payload = ("\r\n".join(lines) + "\r\n\r\n").encode()
             self.sock.sendall(payload)
-            deadline = time.time() + self.timeout
-            while time.time() < deadline:
-                pkt = self._read_packet()
-                if pkt.get("ActionID") == action_id:
-                    return pkt
-            return {}
+            effective_timeout = read_timeout if read_timeout else self.timeout
+            prev_to = None
+            if read_timeout and self.sock is not None:
+                try:
+                    prev_to = self.sock.gettimeout()
+                    self.sock.settimeout(effective_timeout)
+                except Exception:
+                    prev_to = None
+            try:
+                deadline = time.time() + effective_timeout
+                while time.time() < deadline:
+                    pkt = self._read_packet()
+                    if pkt.get("ActionID") == action_id:
+                        return pkt
+                return {}
+            finally:
+                if prev_to is not None and self.sock is not None:
+                    try:
+                        self.sock.settimeout(prev_to)
+                    except Exception:
+                        pass
 
     def extension_state(self, exten, context):
         """Query a dialplan hint via AMI ExtensionState. Returns int status
@@ -174,9 +189,16 @@ class SimpleAMIClient:
             "Priority": str(priority),
             "CallerID": caller_id,
             "Timeout": str(int(timeout) * 1000),
-            "Async": "true",
+            # Synchronous originate: AMI replies "Success" only AFTER the
+            # client actually answers and the dialplan (queue/operator) begins
+            # to execute -- i.e. the client is really connected to the queue,
+            # not merely that the originate request was accepted. A rejected,
+            # busy or unanswered call yields "Response: Error".
+            "Async": "false",
         }
-        return self._action(fields, variables=variables)
+        # The action response arrives only once call setup concludes, which may
+        # take up to the originate timeout, so let the socket wait that long.
+        return self._action(fields, variables=variables, read_timeout=int(timeout) + 15)
 
     def logoff(self) -> None:
         try:

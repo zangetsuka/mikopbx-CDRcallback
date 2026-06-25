@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import re
 import threading
 import socket
@@ -42,6 +43,26 @@ def normalize_phone(phone: str | None) -> str:
         return ""
     cleaned = re.sub(r"\D+", "", phone)
     return cleaned
+
+
+def _parse_call_time(value):
+    """Parse a CDR start_time like '2026-06-25 14:01:11.056' into datetime."""
+    if not value:
+        return None
+    text = str(value).strip().replace("T", " ")
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(text[:26], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _is_client_number(phone, own_dids, pattern=r"[78]\d{10}"):
+    """True only for external RU client numbers (7/8 + 10 digits), excluding own DIDs."""
+    if not phone or phone in own_dids:
+        return False
+    return re.fullmatch(pattern, phone) is not None
 
 
 def _to_int(value: Any, default: int) -> int:
@@ -418,6 +439,14 @@ class CallbackWorker:
             settings.get("max_retries"), self.config.callback.max_retries
         )
 
+        own_dids = {
+            normalize_phone(x)
+            for x in str(os.getenv("CALLBACK_OWN_DIDS", "")).split(",")
+            if x.strip()
+        }
+        client_pattern = os.getenv("CALLBACK_CLIENT_NUMBER_REGEX") or r"[78]\d{10}"
+        max_call_age = _to_int(os.getenv("CALLBACK_MAX_CALL_AGE_MINUTES"), 60)
+
         for call in self.db.get_unprocessed_calls():
             phone = normalize_phone(call.get("src_num") or call.get("dst_num"))
             if not phone:
@@ -427,6 +456,29 @@ class CallbackWorker:
                 )
                 self.db.mark_processed(int(call["id"]))
                 continue
+
+            # Only call back real external client numbers (RU 7/8 + 10 digits);
+            # never internal extensions, feature codes, or our own DID(s).
+            if not _is_client_number(phone, own_dids, client_pattern):
+                self.logger.info(
+                    "Skipping non-client number %s (call #%s)", phone, call["id"]
+                )
+                self.db.mark_processed(int(call["id"]))
+                continue
+
+            # Skip stale/backlog calls (e.g. CDR history pulled at startup):
+            # only call back missed calls newer than CALLBACK_MAX_CALL_AGE_MINUTES.
+            if max_call_age > 0:
+                call_dt = _parse_call_time(call.get("start_time"))
+                if call_dt is not None:
+                    age_min = (datetime.now() - call_dt).total_seconds() / 60.0
+                    if age_min > max_call_age:
+                        self.logger.info(
+                            "Skipping old call #%s (age %.1f min > %s min limit)",
+                            call["id"], age_min, max_call_age,
+                        )
+                        self.db.mark_processed(int(call["id"]))
+                        continue
 
             if dedup_window > 0 and self.db.has_recent_callback(phone, dedup_window):
                 self.logger.info(

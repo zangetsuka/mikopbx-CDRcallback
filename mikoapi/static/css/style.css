@@ -22,6 +22,8 @@
     --color-success: #51cf66;
     --color-warning: #ffd43b;
     --color-voicemail: #4dabf7;
+    --input-bg: #ffffff;
+    --accent-soft: #eef2fb;
 }
 
 body {
@@ -42,6 +44,8 @@ body.dark-theme {
     --border-color: #30363d;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.5);
+    --input-bg: #0d1117;
+    --accent-soft: #1f2733;
 }
 
 .navbar {
@@ -700,3 +704,17 @@ body.dark-theme {
         gap: 0.5rem;
     }
 }
+
+
+/* Phase 4: themed inputs + focus states for callback settings */
+.cb-field input, .cb-field select,
+.cb-filters input, .cb-filters select {
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.cb-field input:focus, .cb-field select:focus,
+.cb-filters input:focus, .cb-filters select:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.18);
+}
+.cb-field input::placeholder { color: var(--text-muted); }

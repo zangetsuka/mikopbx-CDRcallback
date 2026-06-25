@@ -66,6 +66,26 @@
         </div>
     </div>
 
+    <div class="section-header" style="margin-top:28px;">
+        <h3><i class="fas fa-headset"></i> Аналитика обратного звонка</h3>
+        <a href="/callback" class="view-all">К заявкам →</a>
+    </div>
+
+    <div class="stats-grid" id="cbStatsGrid">
+        <div class="stat-card"><div class="stat-icon"><i class="fas fa-list-check"></i></div><div class="stat-info"><span class="stat-label">Всего заявок</span><span class="stat-value" id="cbTotal">-</span></div></div>
+        <div class="stat-card percentage"><div class="stat-icon"><i class="fas fa-percentage"></i></div><div class="stat-info"><span class="stat-label">Success rate</span><span class="stat-value" id="cbSuccess">-</span></div></div>
+        <div class="stat-card duration"><div class="stat-icon"><i class="fas fa-phone-volume"></i></div><div class="stat-info"><span class="stat-label">Всего попыток</span><span class="stat-value" id="cbAttempts">-</span></div></div>
+        <div class="stat-card voicemail"><div class="stat-icon"><i class="fas fa-rotate-right"></i></div><div class="stat-info"><span class="stat-label">Ср. попыток до успеха</span><span class="stat-value" id="cbAvgAttempts">-</span></div></div>
+        <div class="stat-card"><div class="stat-icon"><i class="fas fa-hourglass-half"></i></div><div class="stat-info"><span class="stat-label">Ожидают</span><span class="stat-value" id="cbPending">-</span></div></div>
+    </div>
+
+    <div class="charts-grid">
+        <div class="chart-card"><h3><i class="fas fa-chart-bar"></i> Заявки по дням</h3><div class="chart-container"><canvas id="cbDailyChart"></canvas></div></div>
+        <div class="chart-card"><h3><i class="fas fa-clock"></i> Нагрузка по часам</h3><div class="chart-container"><canvas id="cbHourlyChart"></canvas></div></div>
+        <div class="chart-card"><h3><i class="fas fa-triangle-exclamation"></i> Причины неудач</h3><div class="chart-container"><canvas id="cbFailChart"></canvas></div></div>
+        <div class="chart-card"><h3><i class="fas fa-layer-group"></i> Попыток до успеха</h3><div class="chart-container"><canvas id="cbAttemptsChart"></canvas></div></div>
+    </div>
+
     <div class="recent-calls">
         <div class="section-header">
             <h3><i class="fas fa-clock"></i> Последние звонки</h3>
@@ -82,6 +102,7 @@
 <script>
 let dailyChart = null;
 let typeChart = null;
+let cbDailyChart=null, cbHourlyChart=null, cbFailChart=null, cbAttemptsChart=null;
 
 async function refreshStats() {
     const days = document.getElementById('daysSelect').value;
@@ -92,6 +113,7 @@ async function refreshStats() {
         updateStats(data);
         updateCharts(data);
         updateRecentCalls();
+        loadCallbackAnalytics(days);
     } catch (error) {
         console.error('Error loading stats:', error);
     }
@@ -222,6 +244,50 @@ async function updateRecentCalls() {
     } catch (error) {
         console.error('Error loading recent calls:', error);
     }
+}
+
+function rebuildChart(chart, id, cfg){ if(chart) chart.destroy(); return new Chart(document.getElementById(id).getContext('2d'), cfg); }
+function cbBaseOpts(){ return { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }; }
+function cbStackedOpts(){ return { responsive:true, maintainAspectRatio:false, scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}} }; }
+
+async function loadCallbackAnalytics(days) {
+    try {
+        const r = await fetch('/api/callback/analytics?days=' + days);
+        const d = await r.json();
+        const s = d.summary || {};
+        document.getElementById('cbTotal').textContent = s.total || 0;
+        document.getElementById('cbSuccess').textContent = (s.success_rate || 0) + '%';
+        document.getElementById('cbAttempts').textContent = d.total_attempts || 0;
+        document.getElementById('cbAvgAttempts').textContent = d.avg_attempts_to_success || 0;
+        document.getElementById('cbPending').textContent = (s.pending || 0) + (s.in_progress || 0);
+
+        const daily = d.daily || [];
+        cbDailyChart = rebuildChart(cbDailyChart, 'cbDailyChart', {
+            type:'bar',
+            data:{ labels: daily.map(x=>x.day), datasets:[
+                {label:'Выполнено', data:daily.map(x=>x.completed), backgroundColor:'#22c55e'},
+                {label:'Неудачно', data:daily.map(x=>x.failed), backgroundColor:'#ef4444'} ]},
+            options: cbStackedOpts()
+        });
+        const hourly = d.hourly || [];
+        cbHourlyChart = rebuildChart(cbHourlyChart, 'cbHourlyChart', {
+            type:'bar',
+            data:{ labels: hourly.map((_,i)=> i + ':00'), datasets:[{label:'Звонки', data:hourly, backgroundColor:'#3b82f6'}] },
+            options: cbBaseOpts()
+        });
+        const fr = d.failure_reasons || [];
+        cbFailChart = rebuildChart(cbFailChart, 'cbFailChart', {
+            type:'bar',
+            data:{ labels: fr.map(x=>x.reason), datasets:[{label:'Кол-во', data:fr.map(x=>x.cnt), backgroundColor:'#f59e0b'}] },
+            options: Object.assign(cbBaseOpts(), { indexAxis:'y' })
+        });
+        const ad = d.attempts_distribution || [];
+        cbAttemptsChart = rebuildChart(cbAttemptsChart, 'cbAttemptsChart', {
+            type:'bar',
+            data:{ labels: ad.map(x=> x.attempts + ' поп.'), datasets:[{label:'Заявок', data:ad.map(x=>x.cnt), backgroundColor:'#8b5cf6'}] },
+            options: cbBaseOpts()
+        });
+    } catch(e){ console.error('callback analytics', e); }
 }
 
 refreshStats();

@@ -711,6 +711,98 @@ class Database:
             "success_rate": round((completed / total * 100), 2) if total else 0.0,
         }
 
+    def get_callback_analytics(self, days: int = 7) -> dict[str, Any]:
+        days = max(1, int(days))
+        since = (datetime.now() - timedelta(days=days)).strftime(DATETIME_FORMAT)
+        result: dict[str, Any] = {"days": days}
+        with self._connect() as conn:
+            cur = conn.cursor()
+
+            cur.execute(
+                """
+                SELECT status, COUNT(*) AS cnt FROM callback_tasks
+                WHERE created_at >= ? GROUP BY status
+                """,
+                (since,),
+            )
+            sc = {row["status"]: row["cnt"] for row in cur.fetchall()}
+            completed = sc.get("completed", 0)
+            failed = sc.get("failed", 0)
+            finished = completed + failed
+            total = sum(sc.values())
+            result["summary"] = {
+                "total": total,
+                "completed": completed,
+                "failed": failed,
+                "pending": sc.get("pending", 0),
+                "in_progress": sc.get("in_progress", 0),
+                "cancelled": sc.get("cancelled", 0),
+                "success_rate": round(completed * 100.0 / finished, 1) if finished else 0.0,
+            }
+
+            cur.execute(
+                """
+                SELECT substr(created_at,1,10) AS day,
+                       SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+                       SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
+                       COUNT(*) AS total
+                FROM callback_tasks WHERE created_at >= ?
+                GROUP BY day ORDER BY day ASC
+                """,
+                (since,),
+            )
+            result["daily"] = [dict(r) for r in cur.fetchall()]
+
+            cur.execute(
+                """
+                SELECT CAST(substr(created_at,12,2) AS INTEGER) AS hour, COUNT(*) AS cnt
+                FROM callback_attempts WHERE created_at >= ?
+                GROUP BY hour ORDER BY hour ASC
+                """,
+                (since,),
+            )
+            hourly = [0] * 24
+            for r in cur.fetchall():
+                h = r["hour"]
+                if h is not None and 0 <= h < 24:
+                    hourly[h] = r["cnt"]
+            result["hourly"] = hourly
+
+            cur.execute(
+                """
+                SELECT COALESCE(NULLIF(TRIM(error_message), ''), 'Не указано') AS reason,
+                       COUNT(*) AS cnt
+                FROM callback_attempts
+                WHERE created_at >= ? AND status != 'completed'
+                GROUP BY reason ORDER BY cnt DESC LIMIT 8
+                """,
+                (since,),
+            )
+            result["failure_reasons"] = [dict(r) for r in cur.fetchall()]
+
+            cur.execute(
+                """
+                SELECT (retry_count + 1) AS attempts, COUNT(*) AS cnt
+                FROM callback_tasks
+                WHERE created_at >= ? AND status='completed'
+                GROUP BY attempts ORDER BY attempts ASC
+                """,
+                (since,),
+            )
+            dist = [dict(r) for r in cur.fetchall()]
+            result["attempts_distribution"] = dist
+            ta = sum(d["attempts"] * d["cnt"] for d in dist)
+            tc = sum(d["cnt"] for d in dist)
+            result["avg_attempts_to_success"] = round(ta / tc, 2) if tc else 0.0
+
+            cur.execute(
+                "SELECT COUNT(*) AS cnt FROM callback_attempts WHERE created_at >= ?",
+                (since,),
+            )
+            result["total_attempts"] = cur.fetchone()["cnt"]
+
+        return result
+
     def get_callback_tasks_by_phone(
         self, phone: str, limit: int = 20
     ) -> list[dict[str, Any]]:

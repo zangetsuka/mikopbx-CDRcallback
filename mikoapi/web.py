@@ -280,6 +280,11 @@ def create_app(config: AppConfig, services: ServiceContainer) -> Flask:
         days = request.args.get("days", 7, type=int)
         return jsonify(_db().get_callback_statistics(days))
 
+    @app.route("/api/callback/analytics")
+    def callback_analytics():
+        days = request.args.get("days", 7, type=int)
+        return jsonify(_db().get_callback_analytics(days))
+
     @app.route("/api/callback/phone/<phone>")
     def callback_phone_tasks(phone: str):
         normalized = normalize_phone(phone)

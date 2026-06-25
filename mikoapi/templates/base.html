@@ -31,6 +31,12 @@
                     <i class="fas fa-undo-alt"></i>
                     Callback
                 </a>
+                {% if session.get('authed') %}
+                <a href="/logout" class="nav-link" title="Выйти из системы">
+                    <i class="fas fa-right-from-bracket"></i>
+                    Выйти
+                </a>
+                {% endif %}
                 <button class="theme-toggle" onclick="toggleTheme()" aria-label="Переключить тему">
                     <i class="fas fa-moon"></i>
                 </button>

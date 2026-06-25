@@ -6,7 +6,16 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import (
+    Flask,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    session,
+    url_for,
+)
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
@@ -24,6 +33,43 @@ def create_app(config: AppConfig, services: ServiceContainer) -> Flask:
     app.config["SECRET_KEY"] = config.secret_key
     app.config["SERVICES"] = services
     CORS(app)
+
+    PUBLIC_PATHS = {"/login", "/logout", "/health", "/api/health"}
+
+    @app.before_request
+    def _require_login():
+        if not config.web_auth_enabled:
+            return None
+        path = request.path or "/"
+        if path in PUBLIC_PATHS or path.startswith("/static/"):
+            return None
+        if session.get("authed"):
+            return None
+        if path.startswith("/api/"):
+            return jsonify({"error": "unauthorized"}), 401
+        return redirect(url_for("login", next=path))
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if not config.web_auth_enabled or session.get("authed"):
+            return redirect(url_for("index"))
+        error = None
+        if request.method == "POST":
+            password = (request.form.get("password") or "").strip()
+            if password and password == str(config.web_auth_password):
+                session["authed"] = True
+                session.permanent = True
+                nxt = request.args.get("next") or request.form.get("next") or ""
+                if not nxt.startswith("/"):
+                    nxt = url_for("index")
+                return redirect(nxt)
+            error = "Неверный пароль"
+        return render_template("login.html", error=error)
+
+    @app.route("/logout")
+    def logout():
+        session.clear()
+        return redirect(url_for("login"))
 
     logger = logging.getLogger("web")
 

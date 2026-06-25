@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход | MikoPBX Service</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh; display:flex; align-items:center; justify-content:center;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            color: #e2e8f0;
+        }
+        .login-card {
+            width: 360px; max-width: 92vw;
+            background: rgba(30,41,59,0.85);
+            border: 1px solid rgba(148,163,184,0.18);
+            border-radius: 16px; padding: 36px 32px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+            backdrop-filter: blur(8px);
+        }
+        .login-brand { text-align:center; margin-bottom: 26px; }
+        .login-brand i { font-size: 40px; color: #3b82f6; }
+        .login-brand h1 { font-size: 19px; margin-top: 12px; font-weight: 600; }
+        .login-brand p { font-size: 13px; color:#94a3b8; margin-top: 4px; }
+        .field { margin-bottom: 18px; }
+        .field label { display:block; font-size: 13px; color:#cbd5e1; margin-bottom: 7px; }
+        .field input {
+            width:100%; padding: 12px 14px; border-radius: 10px;
+            border: 1px solid rgba(148,163,184,0.25);
+            background: #0f172a; color:#e2e8f0; font-size: 15px; outline:none;
+            transition: border-color .15s;
+        }
+        .field input:focus { border-color:#3b82f6; }
+        .btn {
+            width:100%; padding: 12px; border:none; border-radius: 10px;
+            background: linear-gradient(135deg,#3b82f6,#2563eb); color:#fff;
+            font-size: 15px; font-weight:600; cursor:pointer; transition: opacity .15s;
+        }
+        .btn:hover { opacity: .92; }
+        .error {
+            background: rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.4);
+            color:#fca5a5; padding: 10px 12px; border-radius: 9px; font-size: 13px;
+            margin-bottom: 16px; text-align:center;
+        }
+    </style>
+</head>
+<body>
+    <form class="login-card" method="POST">
+        <div class="login-brand">
+            <i class="fas fa-phone-volume"></i>
+            <h1>MikoPBX Service</h1>
+            <p>Вход в панель управления</p>
+        </div>
+        {% if error %}<div class="error"><i class="fas fa-circle-exclamation"></i> {{ error }}</div>{% endif %}
+        <div class="field">
+            <label for="password">Пароль</label>
+            <input type="password" id="password" name="password" autofocus autocomplete="current-password" placeholder="Введите пароль">
+        </div>
+        <button type="submit" class="btn"><i class="fas fa-right-to-bracket"></i> Войти</button>
+    </form>
+</body>
+</html>

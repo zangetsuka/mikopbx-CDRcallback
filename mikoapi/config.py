@@ -160,6 +160,8 @@ class AppConfig:
     callback: CallbackConfig
     logging: LoggingConfig
     secret_key: str
+    web_auth_enabled: bool
+    web_auth_password: str
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -229,6 +231,8 @@ class AppConfig:
                 file_path=log_file,
             ),
             secret_key=_env_str("FLASK_SECRET_KEY", "mikoapi-dev-secret"),
+            web_auth_enabled=_env_bool("WEB_AUTH_ENABLED", True),
+            web_auth_password=_env_str("WEB_AUTH_PASSWORD", "admin"),
         )
 
     def ensure_directories(self) -> None:

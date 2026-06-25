@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+
+{% block title %}Callback | MikoPBX Service{% endblock %}
+
+{% block content %}
+<style>
+  .cb-section { margin-top: 24px; }
+  .cb-fieldset { border: 1px solid var(--border-color, #2a2f3a); border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; }
+  .cb-fieldset legend { font-weight: 600; padding: 0 8px; opacity: .85; }
+  .cb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px 18px; }
+  .cb-field { display: flex; flex-direction: column; gap: 6px; }
+  .cb-field label { font-size: 13px; opacity: .8; }
+  .cb-field input, .cb-field select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-color, #2a2f3a); background: var(--input-bg, #11151c); color: inherit; }
+  .cb-hint { font-size: 11px; opacity: .55; }
+  .cb-switch { display: flex; align-items: center; gap: 10px; }
+  .cb-switch input { width: 18px; height: 18px; }
+  .task-actions .task-inline-button { margin-left: 6px; cursor: pointer; border: none; border-radius: 6px; padding: 5px 8px; background: var(--accent-soft, #1f2733); color: inherit; }
+  .task-inline-button:hover { filter: brightness(1.3); }
+  .task-status.pending { color: #f0ad4e; }
+  .task-status.in_progress { color: #5bc0de; }
+  .task-status.completed { color: #5cb85c; }
+  .task-status.failed { color: #d9534f; }
+  .task-status.cancelled { color: #999; }
+  .cb-filters { display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+  .cb-filters select, .cb-filters input { padding:6px 10px; border-radius:8px; border:1px solid var(--border-color,#2a2f3a); background: var(--input-bg,#11151c); color:inherit; }
+</style>
+
+<div class="page-header">
+    <h1><i class="fas fa-undo-alt"></i> Callback System</h1>
+    <div class="header-controls">
+        <button class="btn-refresh" onclick="refreshData()"><i class="fas fa-sync-alt"></i> Обновить</button>
+        <button class="btn-export" onclick="openCreateModal()"><i class="fas fa-plus"></i> Создать задачу</button>
+    </div>
+</div>
+
+<div class="callback-stats">
+    <div class="stat-card"><div class="stat-icon"><i class="fas fa-tasks"></i></div><div class="stat-info"><span class="stat-label">Всего задач</span><span class="stat-value" id="totalTasks">0</span></div></div>
+    <div class="stat-card voicemail"><div class="stat-icon"><i class="fas fa-clock"></i></div><div class="stat-info"><span class="stat-label">В очереди</span><span class="stat-value" id="pendingTasks">0</span></div></div>
+    <div class="stat-card duration"><div class="stat-icon"><i class="fas fa-check-circle"></i></div><div class="stat-info"><span class="stat-label">Выполнено</span><span class="stat-value" id="completedTasks">0</span></div></div>
+    <div class="stat-card percentage"><div class="stat-icon"><i class="fas fa-percent"></i></div><div class="stat-info"><span class="stat-label">Успешность</span><span class="stat-value" id="successRate">0%</span></div></div>
+</div>
+
+<div class="recent-calls cb-section">
+    <div class="section-header">
+        <h3><i class="fas fa-list-ul"></i> Задачи обратного звонка</h3>
+        <span id="taskCount" class="subtle-text"></span>
+    </div>
+    <div class="cb-filters">
+        <label>Статус:</label>
+        <select id="filterStatus" onchange="loadTasks()">
+            <option value="">Все</option>
+            <option value="pending">В очереди</option>
+            <option value="in_progress">В процессе</option>
+            <option value="completed">Выполнено</option>
+            <option value="failed">Ошибка</option>
+            <option value="cancelled">Отменено</option>
+        </select>
+        <input type="text" id="filterPhone" placeholder="Фильтр по номеру" oninput="debouncedLoad()">
+    </div>
+    <div id="tasksList"><div class="loading">Загрузка...</div></div>
+</div>
+
+<div class="chart-card cb-section">
+    <h3><i class="fas fa-sliders-h"></i> Настройки callback</h3>
+
+    <fieldset class="cb-fieldset">
+        <legend>Общее</legend>
+        <div class="cb-grid">
+            <div class="cb-field cb-switch"><input type="checkbox" id="enabled"><label for="enabled">Модуль включён</label></div>
+            <div class="cb-field cb-switch"><input type="checkbox" id="autoCreate"><label for="autoCreate">Авто-создание задач из CDR</label></div>
+            <div class="cb-field">
+                <label for="notificationAudio">Голосовое уведомление</label>
+                <select id="notificationAudio">
+                    <option value="callback-notification">Стандартное</option>
+                    <option value="callback-urgent">Срочное</option>
+                    <option value="callback-friendly">Дружелюбное</option>
+                </select>
+            </div>
+        </div>
+    </fieldset>
+
+    <fieldset class="cb-fieldset">
+        <legend>Кому звонить (маршрутизация)</legend>
+        <div class="cb-grid">
+            <div class="cb-field">
+                <label for="routingMode">Режим</label>
+                <select id="routingMode" onchange="onRoutingChange()">
+                    <option value="queue">Очередь операторов</option>
+                    <option value="operator">Сразу на внутренний номер</option>
+                </select>
+                <span class="cb-hint">Очередь — звонок идёт в очередь; Внутренний — напрямую оператору.</span>
+            </div>
+            <div class="cb-field" id="queueField">
+                <label for="callbackQueue">Очередь (queue)</label>
+                <input type="text" id="callbackQueue" placeholder="callback_queue">
+            </div>
+            <div class="cb-field" id="operatorField">
+                <label for="operatorExtension">Внутренний номер оператора</label>
+                <input type="text" id="operatorExtension" placeholder="201">
+            </div>
+            <div class="cb-field">
+                <label for="clientChannel">Шаблон канала клиента</label>
+                <input type="text" id="clientChannel" placeholder="Local/{phone}@from-internal">
+                <span class="cb-hint">{phone} подставляется автоматически. Напр. PJSIP/{phone} или Local/{phone}@from-internal</span>
+            </div>
+        </div>
+    </fieldset>
+
+    <fieldset class="cb-fieldset">
+        <legend>Тайминг обзвона</legend>
+        <div class="cb-grid">
+            <div class="cb-field"><label for="delayNoAnswer">Задержка для пропущенных (мин)</label><input type="number" id="delayNoAnswer" min="0" max="1440"></div>
+            <div class="cb-field"><label for="delayVoicemail">Задержка для голосовой почты (мин)</label><input type="number" id="delayVoicemail" min="0" max="1440"></div>
+            <div class="cb-field"><label for="operatorRing">Время дозвона оператору (сек)</label><input type="number" id="operatorRing" min="0" max="120"></div>
+            <div class="cb-field"><label for="originateTimeout">Таймаут дозвона (сек)</label><input type="number" id="originateTimeout" min="5" max="300"></div>
+            <div class="cb-field"><label for="maxRetries">Макс. число попыток</label><input type="number" id="maxRetries" min="0" max="10"></div>
+            <div class="cb-field"><label for="retryDelay">Пауза между попытками (мин)</label><input type="number" id="retryDelay" min="0" max="120"></div>
+            <div class="cb-field"><label for="dedupWindow">Анти-дубль: окно (мин, 0 — выкл)</label><input type="number" id="dedupWindow" min="0" max="1440"></div>
+        </div>
+    </fieldset>
+
+    <fieldset class="cb-fieldset">
+        <legend>Рабочее время</legend>
+        <div class="cb-grid">
+            <div class="cb-field cb-switch"><input type="checkbox" id="workHoursEnabled"><label for="workHoursEnabled">Звонить только в рабочее время</label></div>
+            <div class="cb-field"><label for="workStart">Начало</label><input type="time" id="workStart"></div>
+            <div class="cb-field"><label for="workEnd">Конец</label><input type="time" id="workEnd"></div>
+            <div class="cb-field"><label for="workDays">Дни недели (1=Пн … 7=Вс)</label><input type="text" id="workDays" placeholder="1,2,3,4,5"></div>
+        </div>
+    </fieldset>
+
+    <div class="form-actions">
+        <button class="btn-refresh" onclick="saveSettings()"><i class="fas fa-save"></i> Сохранить настройки</button>
+        <button class="btn-export" onclick="testCallback()"><i class="fas fa-flask"></i> Тестовый вызов</button>
+    </div>
+</div>
+
+<div id="createModal" class="modal">
+    <div class="modal-content">
+        <span class="modal-close" onclick="closeCreateModal()">&times;</span>
+        <h2>Создать задачу обратного звонка</h2>
+        <form onsubmit="submitTask(event)">
+            <div class="detail-grid">
+                <div class="form-field"><label for="taskPhone">Номер телефона *</label><input type="text" id="taskPhone" placeholder="79261234567" required></div>
+                <div class="form-field"><label for="taskType">Тип звонка</label><select id="taskType"><option value="no_answer">Пропущенный</option><option value="voicemail">Голосовая почта</option><option value="manual">Ручной</option></select></div>
+                <div class="form-field"><label for="taskDelay">Задержка (секунды)</label><input type="number" id="taskDelay" placeholder="120" min="0"></div>
+                <div class="form-field"><label for="taskPriority">Приоритет (1-10)</label><input type="number" id="taskPriority" min="1" max="10" value="5"></div>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn-refresh"><i class="fas fa-plus"></i> Создать</button>
+                <button type="button" class="btn-export" onclick="closeCreateModal()">Отмена</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="attemptsModal" class="modal">
+    <div class="modal-content">
+        <span class="modal-close" onclick="document.getElementById('attemptsModal').style.display='none'">&times;</span>
+        <h2>История попыток</h2>
+        <div id="attemptsBody"><div class="loading">Загрузка...</div></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let tasks = [];
+let loadTimer = null;
+const statusMap = { pending:'В очереди', in_progress:'В процессе', completed:'Выполнено', failed:'Ошибка', cancelled:'Отменено' };
+
+function debouncedLoad(){ clearTimeout(loadTimer); loadTimer = setTimeout(loadTasks, 350); }
+
+async function loadStats() {
+    try {
+        const r = await fetch('/api/callback/stats?days=7');
+        const s = await r.json();
+        document.getElementById('totalTasks').textContent = s.total || 0;
+        document.getElementById('pendingTasks').textContent = s.pending || 0;
+        document.getElementById('completedTasks').textContent = s.completed || 0;
+        document.getElementById('successRate').textContent = Math.round(s.success_rate || 0) + '%';
+    } catch (e) { console.error('stats', e); }
+}
+
+async function loadTasks() {
+    try {
+        const status = document.getElementById('filterStatus').value;
+        const phone = document.getElementById('filterPhone').value.trim();
+        const params = new URLSearchParams({ limit: '100' });
+        if (status) params.set('status', status);
+        if (phone) params.set('phone', phone);
+        const r = await fetch('/api/callback/tasks?' + params.toString());
+        const d = await r.json();
+        tasks = d.tasks || [];
+        renderTasks(tasks);
+        document.getElementById('taskCount').textContent = 'Показано: ' + tasks.length;
+    } catch (e) { console.error('tasks', e); }
+}
+
+function renderTasks(list) {
+    const c = document.getElementById('tasksList');
+    if (!list.length) { c.innerHTML = '<div class="no-data">Нет задач обратного звонка</div>'; return; }
+    c.innerHTML = list.map(t => {
+        const created = t.created_at ? new Date(t.created_at.replace(' ','T')).toLocaleString('ru-RU') : 'N/A';
+        const sched = t.scheduled_at ? new Date(t.scheduled_at.replace(' ','T')).toLocaleString('ru-RU') : '';
+        const active = (t.status === 'pending' || t.status === 'in_progress');
+        const retryable = (t.status === 'failed' || t.status === 'cancelled');
+        let btns = '';
+        if (active) btns += '<button onclick="callNow('+t.id+')" class="task-inline-button" title="Позвонить сейчас"><i class="fas fa-phone-volume"></i></button>';
+        if (active) btns += '<button onclick="cancelTask('+t.id+')" class="task-inline-button" title="Отменить"><i class="fas fa-times"></i></button>';
+        if (retryable) btns += '<button onclick="retryTask('+t.id+')" class="task-inline-button" title="Повторить"><i class="fas fa-redo"></i></button>';
+        btns += '<button onclick="showAttempts('+t.id+')" class="task-inline-button" title="История попыток"><i class="fas fa-history"></i></button>';
+        return '<div class="task-item"><div class="task-body">'
+            + '<div class="task-title">📞 ' + (t.phone||'N/A') + ' <span class="subtle-text">#'+t.id+'</span></div>'
+            + '<div class="task-meta">Создано: ' + created + (sched?(' • План: '+sched):'') + ' • Тип: ' + (t.call_type||'N/A')
+            + ' • Источник: ' + (t.source||'manual') + ' • Попыток: ' + (t.retry_count||0) + '/' + (t.max_retries??'-')
+            + (t.last_error ? (' • <span style="color:#d9534f">'+t.last_error+'</span>') : '') + '</div></div>'
+            + '<div class="task-actions"><span class="task-status '+t.status+'">'+(statusMap[t.status]||t.status)+'</span>'+btns+'</div></div>';
+    }).join('');
+}
+
+async function loadSettings() {
+    try {
+        const r = await fetch('/api/callback/settings');
+        const s = await r.json();
+        document.getElementById('enabled').checked = !!s.enabled;
+        document.getElementById('autoCreate').checked = !!s.auto_create;
+        document.getElementById('notificationAudio').value = s.notification_audio || 'callback-notification';
+        document.getElementById('routingMode').value = s.routing_mode || 'queue';
+        document.getElementById('callbackQueue').value = s.callback_queue || '';
+        document.getElementById('operatorExtension').value = s.operator_extension || '';
+        document.getElementById('clientChannel').value = s.client_channel_template || 'Local/{phone}@from-internal';
+        document.getElementById('delayNoAnswer').value = s.delay_no_answer_minutes ?? 2;
+        document.getElementById('delayVoicemail').value = s.delay_voicemail_minutes ?? 2;
+        document.getElementById('operatorRing').value = s.operator_ring_seconds ?? 2;
+        document.getElementById('originateTimeout').value = s.originate_timeout ?? 60;
+        document.getElementById('maxRetries').value = s.max_retries ?? 3;
+        document.getElementById('retryDelay').value = s.retry_delay_minutes ?? 5;
+        document.getElementById('dedupWindow').value = s.dedup_window_minutes ?? 30;
+        document.getElementById('workHoursEnabled').checked = !!s.work_hours_enabled;
+        document.getElementById('workStart').value = s.work_hours_start || '09:00';
+        document.getElementById('workEnd').value = s.work_hours_end || '20:00';
+        document.getElementById('workDays').value = s.work_days || '1,2,3,4,5';
+        onRoutingChange();
+    } catch (e) { console.error('settings', e); }
+}
+
+function onRoutingChange() {
+    const mode = document.getElementById('routingMode').value;
+    document.getElementById('queueField').style.opacity = (mode === 'queue') ? '1' : '0.4';
+    document.getElementById('operatorField').style.opacity = (mode === 'operator') ? '1' : '0.85';
+}
+
+async function saveSettings() {
+    const body = {
+        enabled: document.getElementById('enabled').checked,
+        auto_create: document.getElementById('autoCreate').checked,
+        notification_audio: document.getElementById('notificationAudio').value,
+        routing_mode: document.getElementById('routingMode').value,
+        callback_queue: document.getElementById('callbackQueue').value.trim(),
+        operator_extension: document.getElementById('operatorExtension').value.trim(),
+        client_channel_template: document.getElementById('clientChannel').value.trim(),
+        delay_no_answer_minutes: parseInt(document.getElementById('delayNoAnswer').value||'0',10),
+        delay_voicemail_minutes: parseInt(document.getElementById('delayVoicemail').value||'0',10),
+        operator_ring_seconds: parseInt(document.getElementById('operatorRing').value||'0',10),
+        originate_timeout: parseInt(document.getElementById('originateTimeout').value||'60',10),
+        max_retries: parseInt(document.getElementById('maxRetries').value||'0',10),
+        retry_delay_minutes: parseInt(document.getElementById('retryDelay').value||'0',10),
+        dedup_window_minutes: parseInt(document.getElementById('dedupWindow').value||'0',10),
+        work_hours_enabled: document.getElementById('workHoursEnabled').checked,
+        work_hours_start: document.getElementById('workStart').value || '09:00',
+        work_hours_end: document.getElementById('workEnd').value || '20:00',
+        work_days: document.getElementById('workDays').value.trim() || '1,2,3,4,5'
+    };
+    try {
+        const r = await fetch('/api/callback/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const p = await r.json();
+        if (!r.ok) throw new Error(p.error || 'Ошибка сохранения');
+        alert('Настройки сохранены');
+        loadSettings();
+    } catch (e) { alert(e.message || 'Ошибка сохранения настроек'); }
+}
+
+async function testCallback() {
+    const phone = prompt('Введите номер для тестового вызова:');
+    if (!phone) return;
+    try {
+        const r = await fetch('/api/callback/test', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ phone }) });
+        const p = await r.json();
+        if (!r.ok) throw new Error(p.error || 'Ошибка теста');
+        alert(p.message || 'Тестовая задача создана');
+        refreshData();
+    } catch (e) { alert(e.message); }
+}
+
+async function postAction(url, okMsg) {
+    try {
+        const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+        const p = await r.json();
+        if (!r.ok) throw new Error(p.error || 'Ошибка');
+        refreshData();
+    } catch (e) { alert(e.message); }
+}
+function cancelTask(id){ if(confirm('Отменить задачу #'+id+'?')) postAction('/api/callback/task/'+id+'/cancel'); }
+function callNow(id){ postAction('/api/callback/task/'+id+'/call-now'); }
+function retryTask(id){ postAction('/api/callback/task/'+id+'/retry'); }
+
+async function showAttempts(id) {
+    const modal = document.getElementById('attemptsModal');
+    const body = document.getElementById('attemptsBody');
+    body.innerHTML = '<div class="loading">Загрузка...</div>';
+    modal.style.display = 'block';
+    try {
+        const r = await fetch('/api/callback/task/'+id+'/attempts');
+        const d = await r.json();
+        const a = d.attempts || [];
+        if (!a.length) { body.innerHTML = '<div class="no-data">Попыток ещё не было</div>'; return; }
+        body.innerHTML = a.map(x => {
+            const ts = x.created_at ? new Date(x.created_at.replace(' ','T')).toLocaleString('ru-RU') : '';
+            return '<div class="task-item"><div class="task-body"><div class="task-title">Попытка #'+(x.attempt_number||'-')+' — '+(statusMap[x.status]||x.status)+'</div>'
+                + '<div class="task-meta">'+ts+(x.channel?(' • '+x.channel):'')+(x.duration?(' • '+x.duration+' сек'):'')+(x.error_message?(' • <span style="color:#d9534f">'+x.error_message+'</span>'):'')+'</div></div></div>';
+        }).join('');
+    } catch (e) { body.innerHTML = '<div class="no-data">Ошибка загрузки</div>'; }
+}
+
+function openCreateModal(){ document.getElementById('createModal').style.display='block'; }
+function closeCreateModal(){ document.getElementById('createModal').style.display='none'; }
+
+async function submitTask(e) {
+    e.preventDefault();
+    const body = {
+        phone: document.getElementById('taskPhone').value.trim(),
+        call_type: document.getElementById('taskType').value,
+        delay_seconds: parseInt(document.getElementById('taskDelay').value||'0',10),
+        priority: parseInt(document.getElementById('taskPriority').value||'5',10)
+    };
+    try {
+        const r = await fetch('/api/callback/tasks', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const p = await r.json();
+        if (!r.ok) throw new Error(p.error || 'Ошибка создания');
+        closeCreateModal();
+        refreshData();
+    } catch (e) { alert(e.message); }
+}
+
+function refreshData(){ loadStats(); loadTasks(); }
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadSettings();
+    refreshData();
+    setInterval(refreshData, 15000);
+});
+</script>
+{% endblock %}

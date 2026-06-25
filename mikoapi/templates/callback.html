@@ -103,6 +103,11 @@
                 <input type="text" id="clientChannel" placeholder="Local/{phone}@from-internal">
                 <span class="cb-hint">{phone} подставляется автоматически. Напр. PJSIP/{phone} или Local/{phone}@from-internal</span>
             </div>
+            <div class="cb-field">
+                <label for="callerId">CallerID исходящего звонка</label>
+                <input type="text" id="callerId" placeholder="напр. 74812283016">
+                <span class="cb-hint">Номер, который увидит клиент и который попадёт в CDR как «От». Обычно ваш городской DID. Пусто → берётся первый из CALLBACK_OWN_DIDS.</span>
+            </div>
         </div>
     </fieldset>
 
@@ -249,6 +254,7 @@ async function loadSettings() {
         document.getElementById('callbackQueue').value = s.callback_queue || '';
         document.getElementById('operatorExtension').value = s.operator_extension || '';
         document.getElementById('clientChannel').value = s.client_channel_template || 'Local/{phone}@from-internal';
+        document.getElementById('callerId').value = s.caller_id || '';
         document.getElementById('delayNoAnswer').value = s.delay_no_answer_minutes ?? 2;
         document.getElementById('delayVoicemail').value = s.delay_voicemail_minutes ?? 2;
         document.getElementById('operatorRing').value = s.operator_ring_seconds ?? 2;
@@ -286,6 +292,7 @@ async function saveSettings() {
         callback_queue: document.getElementById('callbackQueue').value.trim(),
         operator_extension: document.getElementById('operatorExtension').value.trim(),
         client_channel_template: document.getElementById('clientChannel').value.trim(),
+            caller_id: document.getElementById('callerId').value.trim(),
         delay_no_answer_minutes: parseInt(document.getElementById('delayNoAnswer').value||'0',10),
         delay_voicemail_minutes: parseInt(document.getElementById('delayVoicemail').value||'0',10),
         operator_ring_seconds: parseInt(document.getElementById('operatorRing').value||'0',10),

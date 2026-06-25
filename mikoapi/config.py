@@ -103,6 +103,7 @@ class CallbackConfig:
         return {
             "enabled": self.enabled,
             "routing_mode": "queue",
+            "caller_id": "",
             "operator_extension": self.operator_extension,
             "client_channel_template": "Local/{phone}@from-internal",
             "delay_no_answer_minutes": self.delay_minutes,

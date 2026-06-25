@@ -358,12 +358,26 @@ class CallbackExecutor:
             return {"success": False, "error": "Failed to connect to AMI"}
 
         client_channel = channel_template.format(phone=phone)
+
+        # Outbound CallerID for the callback leg. It must be one of OUR DIDs
+        # (the company number) so the customer sees a recognisable number AND
+        # the CDR records the leg correctly as "our DID -> client". It used to
+        # be set to the client's own number, which made the call look like the
+        # client phoning themselves (src == dst) in the CDR.
+        caller_id = str(settings.get("caller_id") or "").strip()
+        if not caller_id:
+            _own = [
+                normalize_phone(x)
+                for x in str(os.getenv("CALLBACK_OWN_DIDS", "")).split(",")
+                if x.strip()
+            ]
+            caller_id = _own[0] if _own else phone
         try:
             action_id = connector.originate(
                 channel=client_channel,
                 context=self.config.callback.callback_context,
                 extension=str(target_extension),
-                caller_id=phone,
+                caller_id=caller_id,
                 timeout=originate_timeout,
                 variables={
                     "CALLBACK_TASK_ID": task["id"],

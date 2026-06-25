@@ -499,7 +499,32 @@ class CallbackWorker:
         max_call_age = _to_int(os.getenv("CALLBACK_MAX_CALL_AGE_MINUTES"), 60)
 
         for call in self.db.get_unprocessed_calls():
-            phone = normalize_phone(call.get("src_num") or call.get("dst_num"))
+            src = normalize_phone(call.get("src_num"))
+            dst = normalize_phone(call.get("dst_num"))
+
+            # Direction guard: only react to genuine INBOUND missed calls -- an
+            # external client (src) dialing one of OUR DIDs (dst). Our own
+            # outbound callback legs appear in CDR with dst set to the client
+            # (and frequently src == dst, a "call to self"). Without this guard
+            # every callback attempt is re-collected as a new missed call and
+            # spawns another task -> an endless storm of duplicate tasks.
+            if src and dst and src == dst:
+                self.logger.info(
+                    "Skipping self-call #%s (%s -> %s): our own callback leg",
+                    call["id"], src, dst,
+                )
+                self.db.mark_processed(int(call["id"]))
+                continue
+            if own_dids and dst and dst not in own_dids:
+                self.logger.info(
+                    "Skipping non-inbound call #%s (dst %s is not one of our "
+                    "DIDs %s)", call["id"], dst, sorted(own_dids),
+                )
+                self.db.mark_processed(int(call["id"]))
+                continue
+
+            # For an inbound missed call the number to call back is the caller.
+            phone = src or normalize_phone(call.get("dst_num"))
             if not phone:
                 self.logger.warning(
                     "Skipping callback task for call #%s because no phone was found",

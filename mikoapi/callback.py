@@ -146,6 +146,25 @@ class SimpleAMIClient:
                     return pkt
             return {}
 
+    def extension_state(self, exten, context):
+        """Query a dialplan hint via AMI ExtensionState. Returns int status
+        (0=idle, 1=inuse, 2=busy, 4=unavailable, 8=ringing, 16=hold,
+        -1=no hint) or None on error."""
+        try:
+            resp = self._action({
+                "Action": "ExtensionState",
+                "Exten": str(exten),
+                "Context": str(context),
+            })
+        except Exception:
+            return None
+        if not resp:
+            return None
+        try:
+            return int(resp.get("Status"))
+        except (TypeError, ValueError):
+            return None
+
     def originate(self, channel, context, exten, caller_id, timeout, priority=1, variables=None) -> dict:
         fields = {
             "Action": "Originate",
@@ -198,6 +217,15 @@ class AMIConnector:
         except Exception as exc:  # pragma: no cover - network dependent
             self.logger.error("AMI connection failed: %s", exc)
             return False
+
+    def extension_state(self, exten, context):
+        if self.client is None:
+            return None
+        try:
+            return self.client.extension_state(exten, context)
+        except Exception as exc:  # pragma: no cover - network dependent
+            self.logger.warning("ExtensionState error: %s", exc)
+            return None
 
     def originate(self, channel, context, extension, caller_id, timeout, variables=None):
         if self.client is None:
@@ -346,6 +374,7 @@ class CallbackWorker:
         self.db = db
         self.config = config
         self.logger = logging.getLogger(self.__class__.__name__)
+        self._originate_times = []
         self.executor = CallbackExecutor(config)
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
@@ -513,6 +542,62 @@ class CallbackWorker:
                 "Created callback task #%s for call #%s", task_id, call["id"]
             )
 
+    def _backoff_delay_seconds(self, settings: dict[str, Any], attempt_number: int) -> int:
+        """Retry delay (seconds) for this attempt from the backoff schedule
+        (e.g. "5,15,30" minutes). Falls back to the fixed delay if unset."""
+        raw_value = str(settings.get("retry_backoff_minutes") or "").replace(";", ",")
+        steps = []
+        for part in raw_value.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                steps.append(max(1, int(float(part))))
+            except ValueError:
+                continue
+        if not steps:
+            fallback_min = _to_int(settings.get("retry_delay_minutes"), 0)
+            if fallback_min > 0:
+                return fallback_min * 60
+            return self.config.callback.retry_delay_seconds
+        idx = min(max(attempt_number - 1, 0), len(steps) - 1)
+        return steps[idx] * 60
+
+    def _rate_allows(self, max_per_minute: int) -> bool:
+        """True if another originate stays within the per-minute cap."""
+        if max_per_minute <= 0:
+            return True
+        now = time.time()
+        self._originate_times = [t for t in self._originate_times if now - t < 60.0]
+        return len(self._originate_times) < max_per_minute
+
+    def _record_originate(self) -> None:
+        self._originate_times.append(time.time())
+
+    def _operator_available(self, settings: dict[str, Any]):
+        """True if operator idle, False if busy/unavailable, None if unknown."""
+        exten = str(
+            settings.get("busy_check_extension")
+            or settings.get("operator_extension")
+            or ""
+        ).strip()
+        if not exten:
+            return None
+        context = str(
+            settings.get("busy_check_context")
+            or self.config.callback.callback_context
+            or "internal"
+        ).strip()
+        try:
+            connector = self.executor._get_connector()
+            status = connector.extension_state(exten, context)
+        except Exception as exc:
+            self.logger.warning("Operator state check failed (%s); allowing call", exc)
+            return None
+        if status is None or status < 0:
+            return None
+        return status == 0
+
     def _process_due_tasks(self) -> None:
         settings = self._effective_settings()
         if not settings.get("enabled", self.config.callback.enabled):
@@ -520,6 +605,10 @@ class CallbackWorker:
         if not self._within_work_hours(settings):
             return
         due_tasks = self.db.get_due_callback_tasks(limit=20)
+        max_per_cycle = _to_int(settings.get("max_concurrent_calls"), 0)
+        max_per_minute = _to_int(settings.get("max_calls_per_minute"), 0)
+        check_busy = bool(settings.get("check_operator_busy"))
+        started_this_cycle = 0
         for task in due_tasks:
             task_id = int(task["id"])
             attempt_number = int(task.get("retry_count") or 0) + 1
@@ -527,6 +616,28 @@ class CallbackWorker:
                 1,
                 _to_int(task.get("max_retries"), self.config.callback.max_retries),
             )
+            # Storm protection: cap callbacks launched per dispatch cycle.
+            if max_per_cycle > 0 and started_this_cycle >= max_per_cycle:
+                self.logger.info(
+                    "Per-cycle limit (%s) reached; deferring rest", max_per_cycle
+                )
+                break
+            # Storm protection: cap originate rate per minute.
+            if not self._rate_allows(max_per_minute):
+                self.logger.info(
+                    "Rate limit (%s/min) reached; deferring rest", max_per_minute
+                )
+                break
+            # Operator busy/unavailable -> defer WITHOUT consuming a retry.
+            if check_busy and self._operator_available(settings) is False:
+                defer = max(5, _to_int(settings.get("busy_retry_seconds"), 60))
+                self.db.reschedule_callback_task(task_id, defer)
+                self.logger.info(
+                    "Operator busy; deferring task #%s by %ss", task_id, defer
+                )
+                continue
+            self._record_originate()
+            started_this_cycle += 1
             self.db.start_callback_task(task_id)
             result = self.executor.execute(task, settings)
 
@@ -554,7 +665,7 @@ class CallbackWorker:
                 self.db.retry_callback_task(
                     task_id,
                     error_message,
-                    self.config.callback.retry_delay_seconds,
+                    self._backoff_delay_seconds(settings, attempt_number),
                 )
                 self.logger.warning(
                     "Callback task #%s failed on attempt %s/%s: %s",

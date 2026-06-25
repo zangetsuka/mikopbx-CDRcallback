@@ -124,6 +124,13 @@ class CallbackConfig:
             "max_wait_time": self.max_wait_time,
             "callback_queue": self.callback_queue,
             "auto_create": self.auto_create,
+            "retry_backoff_minutes": "5,15,30",
+            "max_concurrent_calls": 0,
+            "max_calls_per_minute": 5,
+            "check_operator_busy": False,
+            "busy_check_extension": "",
+            "busy_check_context": "internal",
+            "busy_retry_seconds": 60,
         }
 
     @property

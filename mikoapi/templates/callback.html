@@ -120,6 +120,25 @@
     </fieldset>
 
     <fieldset class="cb-fieldset">
+        <legend>Ретраи и защита от перегрузки</legend>
+        <div class="cb-grid">
+            <div class="cb-field">
+                <label for="retryBackoff">Backoff-расписание ретраев (мин)</label>
+                <input type="text" id="retryBackoff" placeholder="5,15,30">
+                <span class="cb-hint">Нарастающие паузы между попытками. Пусто — берётся «Пауза между попытками».</span>
+            </div>
+            <div class="cb-field"><label for="maxPerMinute">Лимит звонков в минуту (0 — без лимита)</label><input type="number" id="maxPerMinute" min="0" max="120"></div>
+            <div class="cb-field"><label for="maxPerCycle">Лимит звонков за цикл (0 — без лимита)</label><input type="number" id="maxPerCycle" min="0" max="100"></div>
+        </div>
+        <div class="cb-grid" style="margin-top:14px;">
+            <div class="cb-field cb-switch"><input type="checkbox" id="checkOperatorBusy"><label for="checkOperatorBusy">Не звонить, если оператор занят/недоступен</label></div>
+            <div class="cb-field"><label for="busyExtension">Внутр. номер для проверки занятости</label><input type="text" id="busyExtension" placeholder="напр. 302"><span class="cb-hint">Пусто — берётся номер оператора из маршрутизации.</span></div>
+            <div class="cb-field"><label for="busyContext">Контекст hint (ExtensionState)</label><input type="text" id="busyContext" placeholder="internal"></div>
+            <div class="cb-field"><label for="busyRetry">Отложить при занятости (сек)</label><input type="number" id="busyRetry" min="5" max="600"></div>
+        </div>
+    </fieldset>
+
+    <fieldset class="cb-fieldset">
         <legend>Рабочее время</legend>
         <div class="cb-grid">
             <div class="cb-field cb-switch"><input type="checkbox" id="workHoursEnabled"><label for="workHoursEnabled">Звонить только в рабочее время</label></div>
@@ -241,6 +260,13 @@ async function loadSettings() {
         document.getElementById('workStart').value = s.work_hours_start || '09:00';
         document.getElementById('workEnd').value = s.work_hours_end || '20:00';
         document.getElementById('workDays').value = s.work_days || '1,2,3,4,5';
+        document.getElementById('retryBackoff').value = s.retry_backoff_minutes ?? '5,15,30';
+        document.getElementById('maxPerMinute').value = s.max_calls_per_minute ?? 5;
+        document.getElementById('maxPerCycle').value = s.max_concurrent_calls ?? 0;
+        document.getElementById('checkOperatorBusy').checked = !!s.check_operator_busy;
+        document.getElementById('busyExtension').value = s.busy_check_extension || '';
+        document.getElementById('busyContext').value = s.busy_check_context || 'internal';
+        document.getElementById('busyRetry').value = s.busy_retry_seconds ?? 60;
         onRoutingChange();
     } catch (e) { console.error('settings', e); }
 }
@@ -270,7 +296,14 @@ async function saveSettings() {
         work_hours_enabled: document.getElementById('workHoursEnabled').checked,
         work_hours_start: document.getElementById('workStart').value || '09:00',
         work_hours_end: document.getElementById('workEnd').value || '20:00',
-        work_days: document.getElementById('workDays').value.trim() || '1,2,3,4,5'
+        work_days: document.getElementById('workDays').value.trim() || '1,2,3,4,5',
+        retry_backoff_minutes: document.getElementById('retryBackoff').value.trim(),
+        max_calls_per_minute: parseInt(document.getElementById('maxPerMinute').value || '0', 10),
+        max_concurrent_calls: parseInt(document.getElementById('maxPerCycle').value || '0', 10),
+        check_operator_busy: document.getElementById('checkOperatorBusy').checked,
+        busy_check_extension: document.getElementById('busyExtension').value.trim(),
+        busy_check_context: document.getElementById('busyContext').value.trim() || 'internal',
+        busy_retry_seconds: parseInt(document.getElementById('busyRetry').value || '60', 10)
     };
     try {
         const r = await fetch('/api/callback/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });

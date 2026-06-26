@@ -147,7 +147,8 @@ function setStatusFilter(v, el){
     loadTasks();
 }
 function fmt(dt){ return dt ? new Date(dt.replace(' ','T')).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'; }
-function avatarText(phone){ const d=(phone||'').replace(/\D/g,''); return d ? d.slice(-2) : '??'; }
+const typeIcon = { no_answer:'fa-phone-slash', voicemail:'fa-voicemail', manual:'fa-hand-pointer' };
+function avatarIcon(type){ return '<i class="fas '+(typeIcon[type]||'fa-phone')+'"></i>'; }
 
 async function loadStats() {
     try {
@@ -206,7 +207,7 @@ function renderTasks(list) {
         const isOpen = expanded.has(t.id);
         const main = '<tr onclick="toggleExpand('+t.id+')" style="cursor:pointer">'
             + '<td><button class="expand-btn'+(isOpen?' open':'')+'" onclick="event.stopPropagation();toggleExpand('+t.id+')"><i class="fas fa-chevron-right"></i></button></td>'
-            + '<td><div class="t-task"><div class="t-avatar '+tp+'">'+avatarText(t.phone)+'</div><div><div class="t-phone">'+(t.phone||'N/A')+'</div><div class="t-sub">#'+t.id+'</div></div></div></td>'
+            + '<td><div class="t-task"><div class="t-avatar '+tp+'">'+avatarIcon(tp)+'</div><div><div class="t-phone">'+(t.phone||'N/A')+'</div><div class="t-sub">#'+t.id+'</div></div></div></td>'
             + '<td><span class="task-status '+t.status+'">'+(statusMap[t.status]||t.status)+'</span></td>'
             + '<td>'+(typeMap[tp]||tp)+'</td>'
             + '<td><span class="t-sub">'+(t.source||'manual')+'</span></td>'

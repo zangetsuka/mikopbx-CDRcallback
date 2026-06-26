@@ -20,7 +20,22 @@
         </div>
     </div>
 
-    <div class="stats-grid" id="statsGrid">
+    <div class="section-header" style="margin-bottom:14px">
+    <h3><i class="fas fa-bolt" style="color:var(--amber)"></i> Живой статус АТС <span id="liveNote" style="font-size:12px;font-weight:500;color:var(--text-3);margin-left:8px"></span></h3>
+    <span class="view-all" id="liveUpdated"></span>
+</div>
+<div class="stats-grid" id="liveGrid">
+    <div class="stat-card"><div class="stat-head"><div class="stat-icon"><i class="fas fa-phone-volume"></i></div></div><div class="stat-info"><span class="stat-label">Активные звонки</span><span class="stat-value" id="liveActiveCalls">—</span><span class="stat-delta flat" id="liveChannels">каналов: —</span></div></div>
+    <div class="stat-card duration"><div class="stat-head"><div class="stat-icon"><i class="fas fa-headset"></i></div></div><div class="stat-info"><span class="stat-label">Операторы онлайн</span><span class="stat-value" id="liveOpsAvail">—</span><span class="stat-delta flat" id="liveOpsTotal">из —</span></div></div>
+    <div class="stat-card percentage"><div class="stat-head"><div class="stat-icon"><i class="fas fa-users-line"></i></div></div><div class="stat-info"><span class="stat-label">Заняты разговором</span><span class="stat-value" id="liveOpsBusy">—</span><span class="stat-delta flat" id="liveOpsRing">звонит: —</span></div></div>
+    <div class="stat-card percentage"><div class="stat-head"><div class="stat-icon"><i class="fas fa-hourglass-half"></i></div></div><div class="stat-info"><span class="stat-label">Очередь: ожидают</span><span class="stat-value" id="liveQueueWait">—</span><span class="stat-delta flat">в очереди</span></div></div>
+    <div class="stat-card voicemail"><div class="stat-head"><div class="stat-icon"><i class="fas fa-stopwatch"></i></div></div><div class="stat-info"><span class="stat-label">Среднее ожидание</span><span class="stat-value" id="liveHold">—</span><span class="stat-delta flat">сек.</span></div></div>
+    <div class="stat-card danger"><div class="stat-head"><div class="stat-icon"><i class="fas fa-phone-slash"></i></div></div><div class="stat-info"><span class="stat-label">Abandoned (очередь)</span><span class="stat-value" id="liveAbandoned">—</span><span class="stat-delta flat">за сессию АТС</span></div></div>
+    <div class="stat-card duration"><div class="stat-head"><div class="stat-icon"><i class="fas fa-check-double"></i></div></div><div class="stat-info"><span class="stat-label">Обработано очередью</span><span class="stat-value" id="liveCompleted">—</span><span class="stat-delta flat">за сессию АТС</span></div></div>
+    <div class="stat-card"><div class="stat-head"><div class="stat-icon"><i class="fas fa-list-check"></i></div></div><div class="stat-info"><span class="stat-label">Задачи обзвона в очереди</span><span class="stat-value" id="liveCbPending">—</span><span class="stat-delta flat" id="liveCbSuccess">успешность: —</span></div></div>
+</div>
+
+<div class="stats-grid" id="statsGrid">
         <div class="stat-card">
             <div class="stat-icon"><i class="fas fa-phone"></i></div>
             <div class="stat-info">
@@ -290,6 +305,49 @@ async function loadCallbackAnalytics(days) {
     } catch(e){ console.error('callback analytics', e); }
 }
 
+
+async function refreshLive() {
+    try {
+        const r = await fetch('/api/pbx/live', { cache: 'no-store' });
+        const d = await r.json();
+        const note = document.getElementById('liveNote');
+        if (!d.available) {
+            note.textContent = '• АТС недоступна';
+            note.style.color = 'var(--red)';
+            ['liveActiveCalls','liveOpsAvail','liveOpsBusy','liveQueueWait','liveHold','liveAbandoned','liveCompleted'].forEach(id=>{ var e=document.getElementById(id); if(e) e.textContent='—'; });
+            return;
+        }
+        note.textContent = '• в реальном времени';
+        note.style.color = 'var(--emerald)';
+        const ops = d.operators || {};
+        document.getElementById('liveActiveCalls').textContent = d.active_calls ?? 0;
+        document.getElementById('liveChannels').textContent = 'каналов: ' + (d.active_channels ?? 0);
+        document.getElementById('liveOpsAvail').textContent = ops.available ?? 0;
+        document.getElementById('liveOpsTotal').textContent = 'из ' + (ops.total ?? 0);
+        document.getElementById('liveOpsBusy').textContent = ops.busy ?? 0;
+        document.getElementById('liveOpsRing').textContent = 'звонит: ' + (ops.ringing ?? 0);
+        document.getElementById('liveQueueWait').textContent = d.queue_waiting ?? 0;
+        document.getElementById('liveHold').textContent = d.avg_holdtime ?? 0;
+        document.getElementById('liveAbandoned').textContent = d.abandoned ?? 0;
+        document.getElementById('liveCompleted').textContent = d.completed ?? 0;
+        document.getElementById('liveUpdated').textContent = 'обновлено ' + new Date().toLocaleTimeString('ru-RU');
+    } catch (e) {
+        var note = document.getElementById('liveNote');
+        if (note) { note.textContent = '• ошибка получения данных'; note.style.color = 'var(--amber)'; }
+    }
+}
+async function refreshCbMini() {
+    try {
+        const r = await fetch('/api/callback/stats?days=7');
+        const s = await r.json();
+        document.getElementById('liveCbPending').textContent = s.pending ?? 0;
+        document.getElementById('liveCbSuccess').textContent = 'успешность: ' + Math.round(s.success_rate || 0) + '%';
+    } catch (e) {}
+}
+
+refreshLive(); refreshCbMini();
+setInterval(refreshLive, 10000);
+setInterval(refreshCbMini, 15000);
 refreshStats();
 </script>
 {% endblock %}

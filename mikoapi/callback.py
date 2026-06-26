@@ -200,6 +200,67 @@ class SimpleAMIClient:
         # take up to the originate timeout, so let the socket wait that long.
         return self._action(fields, variables=variables, read_timeout=int(timeout) + 15)
 
+    def _action_events(self, fields, complete_event, read_timeout=8):
+        """Send an action that returns an event list and collect every event
+        packet (matching our ActionID) until the '...Complete' event."""
+        with self._lock:
+            self._counter += 1
+            action_id = str(self._counter)
+            lines = ["%s: %s" % (k, v) for k, v in fields.items()]
+            lines.append("ActionID: %s" % action_id)
+            payload = ("\r\n".join(lines) + "\r\n\r\n").encode()
+            self.sock.sendall(payload)
+            prev_to = None
+            try:
+                prev_to = self.sock.gettimeout()
+                self.sock.settimeout(read_timeout)
+            except Exception:
+                prev_to = None
+            response, events = {}, []
+            try:
+                deadline = time.time() + read_timeout
+                while time.time() < deadline:
+                    pkt = self._read_packet()
+                    if pkt.get("ActionID") != action_id:
+                        continue
+                    ev = pkt.get("Event", "")
+                    if not ev and "Response" in pkt:
+                        response = pkt
+                        if str(pkt.get("Response", "")).lower() == "error":
+                            break
+                        continue
+                    if ev == complete_event:
+                        break
+                    if ev:
+                        events.append(pkt)
+                return response, events
+            finally:
+                if prev_to is not None:
+                    try:
+                        self.sock.settimeout(prev_to)
+                    except Exception:
+                        pass
+
+    def queue_status(self):
+        """Return the list of QueueParams/QueueMember/QueueEntry events."""
+        try:
+            _resp, events = self._action_events(
+                {"Action": "QueueStatus"}, "QueueStatusComplete", read_timeout=8
+            )
+            return events
+        except Exception:
+            return []
+
+    def core_show_channels(self):
+        """Return the list of CoreShowChannel events (one per active channel)."""
+        try:
+            _resp, events = self._action_events(
+                {"Action": "CoreShowChannels"}, "CoreShowChannelsComplete", read_timeout=8
+            )
+            return events
+        except Exception:
+            return []
+
     def logoff(self) -> None:
         try:
             if self.sock is not None:
@@ -279,6 +340,22 @@ class AMIConnector:
             variables=variables,
         )
 
+    def queue_status(self):
+        if self.client is None:
+            return []
+        try:
+            return self.client.queue_status()
+        except Exception:
+            return []
+
+    def core_show_channels(self):
+        if self.client is None:
+            return []
+        try:
+            return self.client.core_show_channels()
+        except Exception:
+            return []
+
     def disconnect(self) -> None:
         if self.client is not None:
             try:
@@ -287,6 +364,88 @@ class AMIConnector:
                 pass
             self.client = None
 
+
+def gather_live_pbx_metrics(config) -> dict:
+    """Collect real-time PBX metrics over a short-lived AMI connection:
+    queue load, operator presence and active channels/calls."""
+    conn = AMIConnector(config)
+    if not conn.connect():
+        return {"available": False, "error": "AMI connection failed"}
+    try:
+        q_events = conn.queue_status()
+        ch_events = conn.core_show_channels()
+    finally:
+        conn.disconnect()
+
+    queues = {}
+    members = {}
+    waiting = abandoned = completed = 0
+    holdtimes = []
+    for ev in q_events:
+        et = ev.get("Event")
+        if et == "QueueParams":
+            qn = ev.get("Queue") or "?"
+            calls = int(ev.get("Calls") or 0)
+            ab = int(ev.get("Abandoned") or 0)
+            cp = int(ev.get("Completed") or 0)
+            ht = int(ev.get("Holdtime") or 0)
+            waiting += calls
+            abandoned += ab
+            completed += cp
+            if ht:
+                holdtimes.append(ht)
+            queues[qn] = {
+                "calls": calls, "abandoned": ab, "completed": cp,
+                "holdtime": ht, "strategy": ev.get("Strategy"),
+            }
+        elif et == "QueueMember":
+            loc = ev.get("Location") or ev.get("StateInterface") or ev.get("Name") or "?"
+            try:
+                status = int(ev.get("Status") or 0)
+            except (TypeError, ValueError):
+                status = 0
+            paused = str(ev.get("Paused")) == "1"
+            members[loc] = {
+                "name": ev.get("Name"), "status": status, "paused": paused,
+                "calls_taken": int(ev.get("CallsTaken") or 0),
+            }
+
+    total_ops = len(members)
+    available = sum(1 for m in members.values() if m["status"] == 1 and not m["paused"])
+    busy = sum(1 for m in members.values() if m["status"] in (2, 3, 7))
+    ringing_ops = sum(1 for m in members.values() if m["status"] == 6)
+    paused_ops = sum(1 for m in members.values() if m["paused"])
+    unavailable = sum(1 for m in members.values() if m["status"] in (0, 4, 5))
+
+    linked = set()
+    up = ring_ch = 0
+    for ev in ch_events:
+        st = (ev.get("ChannelStateDesc") or "").lower()
+        lid = ev.get("LinkedID") or ev.get("Linkedid") or ev.get("Uniqueid")
+        if lid:
+            linked.add(lid)
+        if st == "up":
+            up += 1
+        elif st in ("ring", "ringing"):
+            ring_ch += 1
+
+    avg_hold = round(sum(holdtimes) / len(holdtimes)) if holdtimes else 0
+    return {
+        "available": True,
+        "operators": {
+            "total": total_ops, "available": available, "busy": busy,
+            "ringing": ringing_ops, "paused": paused_ops, "unavailable": unavailable,
+        },
+        "queues": queues,
+        "queue_waiting": waiting,
+        "abandoned": abandoned,
+        "completed": completed,
+        "avg_holdtime": avg_hold,
+        "active_channels": len(ch_events),
+        "active_calls": len(linked),
+        "channels_up": up,
+        "ringing_channels": ring_ch,
+    }
 
 class CallbackExecutor:
     def __init__(self, config: AppConfig):

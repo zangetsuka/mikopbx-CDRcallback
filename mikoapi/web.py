@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -19,7 +20,7 @@ from flask import (
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
-from .callback import normalize_phone
+from .callback import gather_live_pbx_metrics, normalize_phone
 from .config import AppConfig
 from .service import ServiceContainer
 
@@ -119,6 +120,23 @@ def create_app(config: AppConfig, services: ServiceContainer) -> Flask:
                 "status": services.get_status(),
             }
         )
+
+    _live_cache = {"ts": 0.0, "data": None}
+
+    @app.route("/api/pbx/live")
+    def pbx_live():
+        now = time.time()
+        if _live_cache["data"] is not None and (now - _live_cache["ts"]) < 5.0:
+            return jsonify(_live_cache["data"])
+        try:
+            data = gather_live_pbx_metrics(config)
+        except Exception as exc:  # pragma: no cover
+            logging.getLogger("web").warning("live metrics failed: %s", exc)
+            data = {"available": False, "error": str(exc)}
+        _live_cache["ts"] = now
+        _live_cache["data"] = data
+        return jsonify(data)
+
 
     @app.route("/api/service/status")
     def service_status():

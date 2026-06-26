@@ -500,6 +500,7 @@ class CallbackWorker:
         delay_no_answer = _to_int(settings.get("delay_no_answer_minutes"), default_delay)
         delay_voicemail = _to_int(settings.get("delay_voicemail_minutes"), default_delay)
         dedup_window = _to_int(settings.get("dedup_window_minutes"), 0)
+        task_ttl_minutes = _to_int(settings.get("task_ttl_minutes"), 0)
         max_retries = _to_int(
             settings.get("max_retries"), self.config.callback.max_retries
         )
@@ -673,6 +674,25 @@ class CallbackWorker:
         for task in due_tasks:
             task_id = int(task["id"])
             attempt_number = int(task.get("retry_count") or 0) + 1
+            # TTL: expire stale tasks instead of calling (e.g. a missed call from
+            # yesterday evening that only becomes due at the start of today's work
+            # window). Keeps the system from making "next morning" surprise calls.
+            if task_ttl_minutes > 0:
+                created_dt = _parse_call_time(
+                    task.get("created_at") or task.get("scheduled_at")
+                )
+                if created_dt is not None:
+                    age_min = (datetime.now() - created_dt).total_seconds() / 60.0
+                    if age_min > task_ttl_minutes:
+                        self.db.expire_callback_task(
+                            task_id,
+                            f"TTL expired ({int(age_min)} min > {task_ttl_minutes} min)",
+                        )
+                        self.logger.info(
+                            "Callback task #%s expired by TTL (%s min old, limit %s)",
+                            task_id, int(age_min), task_ttl_minutes,
+                        )
+                        continue
             max_retries = max(
                 1,
                 _to_int(task.get("max_retries"), self.config.callback.max_retries),

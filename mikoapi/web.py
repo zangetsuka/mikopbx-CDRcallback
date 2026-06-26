@@ -96,6 +96,20 @@ def create_app(config: AppConfig, services: ServiceContainer) -> Flask:
     def callback_page():
         return render_template("callback.html")
 
+    @app.route("/callback/tasks")
+    def callback_tasks_page():
+        return render_template("tasks.html")
+
+    @app.route("/api/callback/tasks/clear", methods=["POST"])
+    def callback_tasks_clear():
+        result = _db().clear_callback_tasks()
+        return jsonify({"success": True, **result})
+
+    @app.route("/api/maintenance/clear-cdr", methods=["POST"])
+    def maintenance_clear_cdr():
+        result = _db().clear_cdr()
+        return jsonify({"success": True, **result})
+
     @app.route("/health")
     def health():
         return jsonify(

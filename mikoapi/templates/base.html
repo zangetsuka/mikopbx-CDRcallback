@@ -27,9 +27,13 @@
                     <i class="fas fa-list"></i>
                     Звонки
                 </a>
-                <a href="/callback" class="nav-link {% if request.path.startswith('/callback') %}active{% endif %}">
+                <a href="/callback" class="nav-link {% if request.path == '/callback' %}active{% endif %}">
                     <i class="fas fa-undo-alt"></i>
                     Callback
+                </a>
+                <a href="/callback/tasks" class="nav-link {% if request.path.startswith('/callback/tasks') %}active{% endif %}">
+                    <i class="fas fa-list-check"></i>
+                    Задачи
                 </a>
                 {% if session.get('authed') %}
                 <a href="/logout" class="nav-link" title="Выйти из системы">

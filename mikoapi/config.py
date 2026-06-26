@@ -132,6 +132,7 @@ class CallbackConfig:
             "busy_check_extension": "",
             "busy_check_context": "internal",
             "busy_retry_seconds": 60,
+            "task_ttl_minutes": 0,
         }
 
     @property

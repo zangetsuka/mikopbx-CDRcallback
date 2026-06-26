@@ -646,6 +646,38 @@ class Database:
             conn.commit()
             return cursor.rowcount > 0
 
+    def expire_callback_task(self, task_id: int, reason: str = "TTL expired") -> None:
+        now_value = _now_str()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE callback_tasks
+                SET status = 'expired',
+                    last_error = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (reason, now_value, task_id),
+            )
+
+    def clear_callback_tasks(self) -> dict[str, int]:
+        with self._connect() as conn:
+            cur = conn.cursor()
+            attempts = cur.execute("SELECT COUNT(*) FROM callback_attempts").fetchone()[0]
+            tasks = cur.execute("SELECT COUNT(*) FROM callback_tasks").fetchone()[0]
+            cur.execute("DELETE FROM callback_attempts")
+            cur.execute("DELETE FROM callback_tasks")
+        return {"tasks": int(tasks), "attempts": int(attempts)}
+
+    def clear_cdr(self) -> dict[str, int]:
+        with self._connect() as conn:
+            cur = conn.cursor()
+            calls = cur.execute("SELECT COUNT(*) FROM calls").fetchone()[0]
+            segments = cur.execute("SELECT COUNT(*) FROM segments").fetchone()[0]
+            cur.execute("DELETE FROM segments")
+            cur.execute("DELETE FROM calls")
+        return {"calls": int(calls), "segments": int(segments)}
+
     def add_callback_attempt(
         self,
         task_id: int,

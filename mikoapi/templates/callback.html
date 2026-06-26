@@ -23,41 +23,14 @@
   .task-status.cancelled { color: #999; }
   .cb-filters { display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
   .cb-filters select, .cb-filters input { padding:6px 10px; border-radius:8px; border:1px solid var(--border-color,#2a2f3a); background: var(--input-bg,#11151c); color:inherit; }
+  .task-status.expired { color:#b07; opacity:.85; }
 </style>
 
 <div class="page-header">
-    <h1><i class="fas fa-undo-alt"></i> Callback System</h1>
+    <h1><i class="fas fa-sliders-h"></i> Настройки Callback</h1>
     <div class="header-controls">
-        <button class="btn-refresh" onclick="refreshData()"><i class="fas fa-sync-alt"></i> Обновить</button>
-        <button class="btn-export" onclick="openCreateModal()"><i class="fas fa-plus"></i> Создать задачу</button>
+        <a href="/callback/tasks" class="btn-export"><i class="fas fa-list-check"></i> Задачи обратного звонка</a>
     </div>
-</div>
-
-<div class="callback-stats">
-    <div class="stat-card"><div class="stat-icon"><i class="fas fa-tasks"></i></div><div class="stat-info"><span class="stat-label">Всего задач</span><span class="stat-value" id="totalTasks">0</span></div></div>
-    <div class="stat-card voicemail"><div class="stat-icon"><i class="fas fa-clock"></i></div><div class="stat-info"><span class="stat-label">В очереди</span><span class="stat-value" id="pendingTasks">0</span></div></div>
-    <div class="stat-card duration"><div class="stat-icon"><i class="fas fa-check-circle"></i></div><div class="stat-info"><span class="stat-label">Выполнено</span><span class="stat-value" id="completedTasks">0</span></div></div>
-    <div class="stat-card percentage"><div class="stat-icon"><i class="fas fa-percent"></i></div><div class="stat-info"><span class="stat-label">Успешность</span><span class="stat-value" id="successRate">0%</span></div></div>
-</div>
-
-<div class="recent-calls cb-section">
-    <div class="section-header">
-        <h3><i class="fas fa-list-ul"></i> Задачи обратного звонка</h3>
-        <span id="taskCount" class="subtle-text"></span>
-    </div>
-    <div class="cb-filters">
-        <label>Статус:</label>
-        <select id="filterStatus" onchange="loadTasks()">
-            <option value="">Все</option>
-            <option value="pending">В очереди</option>
-            <option value="in_progress">В процессе</option>
-            <option value="completed">Выполнено</option>
-            <option value="failed">Ошибка</option>
-            <option value="cancelled">Отменено</option>
-        </select>
-        <input type="text" id="filterPhone" placeholder="Фильтр по номеру" oninput="debouncedLoad()">
-    </div>
-    <div id="tasksList"><div class="loading">Загрузка...</div></div>
 </div>
 
 <div class="chart-card cb-section">
@@ -150,6 +123,16 @@
             <div class="cb-field"><label for="workStart">Начало</label><input type="time" id="workStart"></div>
             <div class="cb-field"><label for="workEnd">Конец</label><input type="time" id="workEnd"></div>
             <div class="cb-field"><label for="workDays">Дни недели (1=Пн … 7=Вс)</label><input type="text" id="workDays" placeholder="1,2,3,4,5"></div>
+            <div class="cb-field"><label for="taskTtl">TTL задачи, мин (0 = выкл)</label><input type="number" id="taskTtl" min="0" placeholder="0"></div>
+        </div>
+    </fieldset>
+
+    <fieldset class="cb-fieldset">
+        <legend><i class="fas fa-database"></i> Обслуживание базы данных</legend>
+        <p style="opacity:.7;margin:0 0 12px;">Необратимые операции. Используйте с осторожностью.</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <button type="button" class="btn-export" style="background:#c0392b;color:#fff;" onclick="clearTasksMaint()"><i class="fas fa-trash"></i> Очистить все заявки</button>
+            <button type="button" class="btn-export" style="background:#c0392b;color:#fff;" onclick="clearCdr()"><i class="fas fa-trash"></i> Очистить историю звонков (CDR)</button>
         </div>
     </fieldset>
 
@@ -159,90 +142,10 @@
     </div>
 </div>
 
-<div id="createModal" class="modal">
-    <div class="modal-content">
-        <span class="modal-close" onclick="closeCreateModal()">&times;</span>
-        <h2>Создать задачу обратного звонка</h2>
-        <form onsubmit="submitTask(event)">
-            <div class="detail-grid">
-                <div class="form-field"><label for="taskPhone">Номер телефона *</label><input type="text" id="taskPhone" placeholder="79261234567" required></div>
-                <div class="form-field"><label for="taskType">Тип звонка</label><select id="taskType"><option value="no_answer">Пропущенный</option><option value="voicemail">Голосовая почта</option><option value="manual">Ручной</option></select></div>
-                <div class="form-field"><label for="taskDelay">Задержка (секунды)</label><input type="number" id="taskDelay" placeholder="120" min="0"></div>
-                <div class="form-field"><label for="taskPriority">Приоритет (1-10)</label><input type="number" id="taskPriority" min="1" max="10" value="5"></div>
-            </div>
-            <div class="form-actions">
-                <button type="submit" class="btn-refresh"><i class="fas fa-plus"></i> Создать</button>
-                <button type="button" class="btn-export" onclick="closeCreateModal()">Отмена</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<div id="attemptsModal" class="modal">
-    <div class="modal-content">
-        <span class="modal-close" onclick="document.getElementById('attemptsModal').style.display='none'">&times;</span>
-        <h2>История попыток</h2>
-        <div id="attemptsBody"><div class="loading">Загрузка...</div></div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-let tasks = [];
-let loadTimer = null;
-const statusMap = { pending:'В очереди', in_progress:'В процессе', completed:'Выполнено', failed:'Ошибка', cancelled:'Отменено' };
-
-function debouncedLoad(){ clearTimeout(loadTimer); loadTimer = setTimeout(loadTasks, 350); }
-
-async function loadStats() {
-    try {
-        const r = await fetch('/api/callback/stats?days=7');
-        const s = await r.json();
-        document.getElementById('totalTasks').textContent = s.total || 0;
-        document.getElementById('pendingTasks').textContent = s.pending || 0;
-        document.getElementById('completedTasks').textContent = s.completed || 0;
-        document.getElementById('successRate').textContent = Math.round(s.success_rate || 0) + '%';
-    } catch (e) { console.error('stats', e); }
-}
-
-async function loadTasks() {
-    try {
-        const status = document.getElementById('filterStatus').value;
-        const phone = document.getElementById('filterPhone').value.trim();
-        const params = new URLSearchParams({ limit: '100' });
-        if (status) params.set('status', status);
-        if (phone) params.set('phone', phone);
-        const r = await fetch('/api/callback/tasks?' + params.toString());
-        const d = await r.json();
-        tasks = d.tasks || [];
-        renderTasks(tasks);
-        document.getElementById('taskCount').textContent = 'Показано: ' + tasks.length;
-    } catch (e) { console.error('tasks', e); }
-}
-
-function renderTasks(list) {
-    const c = document.getElementById('tasksList');
-    if (!list.length) { c.innerHTML = '<div class="no-data">Нет задач обратного звонка</div>'; return; }
-    c.innerHTML = list.map(t => {
-        const created = t.created_at ? new Date(t.created_at.replace(' ','T')).toLocaleString('ru-RU') : 'N/A';
-        const sched = t.scheduled_at ? new Date(t.scheduled_at.replace(' ','T')).toLocaleString('ru-RU') : '';
-        const active = (t.status === 'pending' || t.status === 'in_progress');
-        const retryable = (t.status === 'failed' || t.status === 'cancelled');
-        let btns = '';
-        if (active) btns += '<button onclick="callNow('+t.id+')" class="task-inline-button" title="Позвонить сейчас"><i class="fas fa-phone-volume"></i></button>';
-        if (active) btns += '<button onclick="cancelTask('+t.id+')" class="task-inline-button" title="Отменить"><i class="fas fa-times"></i></button>';
-        if (retryable) btns += '<button onclick="retryTask('+t.id+')" class="task-inline-button" title="Повторить"><i class="fas fa-redo"></i></button>';
-        btns += '<button onclick="showAttempts('+t.id+')" class="task-inline-button" title="История попыток"><i class="fas fa-history"></i></button>';
-        return '<div class="task-item"><div class="task-body">'
-            + '<div class="task-title">📞 ' + (t.phone||'N/A') + ' <span class="subtle-text">#'+t.id+'</span></div>'
-            + '<div class="task-meta">Создано: ' + created + (sched?(' • План: '+sched):'') + ' • Тип: ' + (t.call_type||'N/A')
-            + ' • Источник: ' + (t.source||'manual') + ' • Попыток: ' + (t.retry_count||0) + '/' + (t.max_retries??'-')
-            + (t.last_error ? (' • <span style="color:#d9534f">'+t.last_error+'</span>') : '') + '</div></div>'
-            + '<div class="task-actions"><span class="task-status '+t.status+'">'+(statusMap[t.status]||t.status)+'</span>'+btns+'</div></div>';
-    }).join('');
-}
-
 async function loadSettings() {
     try {
         const r = await fetch('/api/callback/settings');
@@ -266,6 +169,7 @@ async function loadSettings() {
         document.getElementById('workStart').value = s.work_hours_start || '09:00';
         document.getElementById('workEnd').value = s.work_hours_end || '20:00';
         document.getElementById('workDays').value = s.work_days || '1,2,3,4,5';
+        document.getElementById('taskTtl').value = s.task_ttl_minutes ?? 0;
         document.getElementById('retryBackoff').value = s.retry_backoff_minutes ?? '5,15,30';
         document.getElementById('maxPerMinute').value = s.max_calls_per_minute ?? 5;
         document.getElementById('maxPerCycle').value = s.max_concurrent_calls ?? 0;
@@ -304,6 +208,7 @@ async function saveSettings() {
         work_hours_start: document.getElementById('workStart').value || '09:00',
         work_hours_end: document.getElementById('workEnd').value || '20:00',
         work_days: document.getElementById('workDays').value.trim() || '1,2,3,4,5',
+        task_ttl_minutes: parseInt(document.getElementById('taskTtl').value||'0',10),
         retry_backoff_minutes: document.getElementById('retryBackoff').value.trim(),
         max_calls_per_minute: parseInt(document.getElementById('maxPerMinute').value || '0', 10),
         max_concurrent_calls: parseInt(document.getElementById('maxPerCycle').value || '0', 10),
@@ -333,62 +238,27 @@ async function testCallback() {
     } catch (e) { alert(e.message); }
 }
 
-async function postAction(url, okMsg) {
+async function clearTasksMaint(){
+    if(!confirm('Удалить ВСЕ задачи обратного звонка и историю попыток? Это действие необратимо.')) return;
     try {
-        const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+        const r = await fetch('/api/callback/tasks/clear', { method:'POST' });
         const p = await r.json();
-        if (!r.ok) throw new Error(p.error || 'Ошибка');
-        refreshData();
-    } catch (e) { alert(e.message); }
+        if(!r.ok) throw new Error(p.error || 'Ошибка');
+        alert('Удалено задач: '+(p.tasks||0)+', попыток: '+(p.attempts||0));
+    } catch(e){ alert(e.message); }
 }
-function cancelTask(id){ if(confirm('Отменить задачу #'+id+'?')) postAction('/api/callback/task/'+id+'/cancel'); }
-function callNow(id){ postAction('/api/callback/task/'+id+'/call-now'); }
-function retryTask(id){ postAction('/api/callback/task/'+id+'/retry'); }
-
-async function showAttempts(id) {
-    const modal = document.getElementById('attemptsModal');
-    const body = document.getElementById('attemptsBody');
-    body.innerHTML = '<div class="loading">Загрузка...</div>';
-    modal.style.display = 'block';
+async function clearCdr(){
+    if(!confirm('Очистить историю звонков (CDR): таблицы calls и segments? Это действие необратимо.')) return;
     try {
-        const r = await fetch('/api/callback/task/'+id+'/attempts');
-        const d = await r.json();
-        const a = d.attempts || [];
-        if (!a.length) { body.innerHTML = '<div class="no-data">Попыток ещё не было</div>'; return; }
-        body.innerHTML = a.map(x => {
-            const ts = x.created_at ? new Date(x.created_at.replace(' ','T')).toLocaleString('ru-RU') : '';
-            return '<div class="task-item"><div class="task-body"><div class="task-title">Попытка #'+(x.attempt_number||'-')+' — '+(statusMap[x.status]||x.status)+'</div>'
-                + '<div class="task-meta">'+ts+(x.channel?(' • '+x.channel):'')+(x.duration?(' • '+x.duration+' сек'):'')+(x.error_message?(' • <span style="color:#d9534f">'+x.error_message+'</span>'):'')+'</div></div></div>';
-        }).join('');
-    } catch (e) { body.innerHTML = '<div class="no-data">Ошибка загрузки</div>'; }
-}
-
-function openCreateModal(){ document.getElementById('createModal').style.display='block'; }
-function closeCreateModal(){ document.getElementById('createModal').style.display='none'; }
-
-async function submitTask(e) {
-    e.preventDefault();
-    const body = {
-        phone: document.getElementById('taskPhone').value.trim(),
-        call_type: document.getElementById('taskType').value,
-        delay_seconds: parseInt(document.getElementById('taskDelay').value||'0',10),
-        priority: parseInt(document.getElementById('taskPriority').value||'5',10)
-    };
-    try {
-        const r = await fetch('/api/callback/tasks', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const r = await fetch('/api/maintenance/clear-cdr', { method:'POST' });
         const p = await r.json();
-        if (!r.ok) throw new Error(p.error || 'Ошибка создания');
-        closeCreateModal();
-        refreshData();
-    } catch (e) { alert(e.message); }
+        if(!r.ok) throw new Error(p.error || 'Ошибка');
+        alert('Удалено звонков: '+(p.calls||0)+', сегментов: '+(p.segments||0));
+    } catch(e){ alert(e.message); }
 }
-
-function refreshData(){ loadStats(); loadTasks(); }
 
 document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
-    refreshData();
-    setInterval(refreshData, 15000);
 });
 </script>
 {% endblock %}

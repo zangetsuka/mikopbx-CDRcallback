@@ -4,68 +4,116 @@
 
 {% block content %}
 <style>
-  .cb-section { margin-top: 24px; }
-  .cb-fieldset { border: 1px solid var(--border-color, #2a2f3a); border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; }
-  .cb-fieldset legend { font-weight: 600; padding: 0 8px; opacity: .85; }
-  .cb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px 18px; }
-  .cb-field { display: flex; flex-direction: column; gap: 6px; }
-  .cb-field label { font-size: 13px; opacity: .8; }
-  .cb-field input, .cb-field select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-color, #2a2f3a); background: var(--input-bg, #11151c); color: inherit; }
-  .cb-hint { font-size: 11px; opacity: .55; }
-  .cb-switch { display: flex; align-items: center; gap: 10px; }
-  .cb-switch input { width: 18px; height: 18px; }
-  .task-actions .task-inline-button { margin-left: 6px; cursor: pointer; border: none; border-radius: 6px; padding: 5px 8px; background: var(--accent-soft, #1f2733); color: inherit; }
-  .task-inline-button:hover { filter: brightness(1.3); }
-  .task-status.pending { color: #f0ad4e; }
-  .task-status.in_progress { color: #5bc0de; }
-  .task-status.completed { color: #5cb85c; }
-  .task-status.failed { color: #d9534f; }
-  .task-status.cancelled { color: #999; }
-  .cb-filters { display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
-  .cb-filters select, .cb-filters input { padding:6px 10px; border-radius:8px; border:1px solid var(--border-color,#2a2f3a); background: var(--input-bg,#11151c); color:inherit; }
-  .task-status.expired { color:#b07; opacity:.85; }
+  .tasks-toolbar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:18px; }
+  .tasks-toolbar .seg { display:flex; gap:4px; padding:4px; background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--r); }
+  .seg-btn { padding:7px 13px; border:none; background:none; color:var(--text-2); font-family:inherit; font-size:13px; font-weight:500; border-radius:var(--r-sm); cursor:pointer; transition:all var(--t); white-space:nowrap; }
+  .seg-btn:hover { color:var(--text); background:var(--bg-elevated); }
+  .seg-btn.active { color:#fff; background:linear-gradient(135deg,var(--blue),var(--blue-2)); }
+  .seg-btn .cnt { opacity:.7; font-size:11px; margin-left:4px; }
+  .search-mini { display:flex; align-items:center; gap:8px; background:var(--bg-elevated); border:1px solid var(--border); border-radius:var(--r-sm); padding:8px 12px; color:var(--text-3); min-width:220px; }
+  .search-mini input { background:none; border:none; outline:none; color:var(--text); font-family:inherit; font-size:13px; flex:1; }
+  .t-task { display:flex; align-items:center; gap:12px; }
+  .t-avatar { width:38px; height:38px; border-radius:11px; flex:none; display:grid; place-items:center; font-size:13px; font-weight:600; color:#fff; background:linear-gradient(135deg,var(--blue),var(--violet)); }
+  .t-avatar.no_answer { background:linear-gradient(135deg,#EF4444,#F59E0B); }
+  .t-avatar.voicemail { background:linear-gradient(135deg,#8B5CF6,#4F7CFF); }
+  .t-avatar.manual { background:linear-gradient(135deg,#22C55E,#4F7CFF); }
+  .t-phone { font-weight:600; font-size:14px; letter-spacing:-0.01em; }
+  .t-sub { font-size:12px; color:var(--text-3); }
+  .retry-timeline { display:flex; align-items:center; gap:5px; }
+  .retry-dot { width:8px; height:8px; border-radius:50%; background:var(--bg-elevated-2); border:1px solid var(--border-strong); }
+  .retry-dot.done { background:var(--blue); border-color:var(--blue); box-shadow:0 0 0 3px var(--blue-soft); }
+  .retry-dot.fail { background:var(--red); border-color:var(--red); }
+  .retry-cnt { font-size:12px; color:var(--text-2); font-weight:600; margin-left:4px; }
+  .expand-btn { width:28px; height:28px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elevated); color:var(--text-2); cursor:pointer; transition:all var(--t); display:inline-grid; place-items:center; }
+  .expand-btn:hover { background:var(--blue-soft); color:var(--blue-2); border-color:var(--blue); }
+  .expand-btn.open i { transform:rotate(90deg); }
+  .expand-btn i { transition:transform var(--t); }
+  .detail-row > td { background:var(--bg-surface) !important; padding:0 !important; }
+  .detail-inner { padding:18px 22px; }
+  .tl { position:relative; padding-left:26px; }
+  .tl-item { position:relative; padding:0 0 16px; }
+  .tl-item:last-child { padding-bottom:0; }
+  .tl-item::before { content:""; position:absolute; left:-19px; top:4px; width:10px; height:10px; border-radius:50%; background:var(--blue); box-shadow:0 0 0 3px var(--blue-soft); }
+  .tl-item.completed::before { background:var(--emerald); box-shadow:0 0 0 3px var(--emerald-soft); }
+  .tl-item.failed::before { background:var(--red); box-shadow:0 0 0 3px var(--red-soft); }
+  .tl-item::after { content:""; position:absolute; left:-15px; top:14px; bottom:-4px; width:2px; background:var(--border); }
+  .tl-item:last-child::after { display:none; }
+  .tl-title { font-weight:600; font-size:13px; }
+  .tl-meta { font-size:12px; color:var(--text-3); margin-top:2px; }
+  .row-actions { display:flex; gap:6px; justify-content:flex-end; }
 </style>
 
 <div class="page-header">
-    <h1><i class="fas fa-list-check"></i> Задачи обратного звонка</h1>
+    <div>
+        <h1><i class="fas fa-list-check"></i> Задачи обратного звонка</h1>
+        <div class="page-subtitle"><span id="taskCount">Загрузка…</span></div>
+    </div>
     <div class="header-controls">
-        <button class="btn-refresh" onclick="refreshData()"><i class="fas fa-sync-alt"></i> Обновить</button>
-        <button class="btn-export" onclick="openCreateModal()"><i class="fas fa-plus"></i> Создать задачу</button>
-        <button class="btn-export" style="background:#c0392b;color:#fff;" onclick="clearTasks()"><i class="fas fa-trash"></i> Очистить заявки</button>
+        <button class="btn-export" onclick="refreshData()"><i class="fas fa-sync-alt"></i> Обновить</button>
+        <button class="btn-export btn-danger" onclick="clearTasks()"><i class="fas fa-trash"></i> Очистить</button>
+        <button class="btn-refresh" onclick="openCreateModal()"><i class="fas fa-plus"></i> Создать задачу</button>
     </div>
 </div>
 
 <div class="callback-stats">
-    <div class="stat-card"><div class="stat-icon"><i class="fas fa-tasks"></i></div><div class="stat-info"><span class="stat-label">Всего задач</span><span class="stat-value" id="totalTasks">0</span></div></div>
-    <div class="stat-card voicemail"><div class="stat-icon"><i class="fas fa-clock"></i></div><div class="stat-info"><span class="stat-label">В очереди</span><span class="stat-value" id="pendingTasks">0</span></div></div>
-    <div class="stat-card duration"><div class="stat-icon"><i class="fas fa-check-circle"></i></div><div class="stat-info"><span class="stat-label">Выполнено</span><span class="stat-value" id="completedTasks">0</span></div></div>
-    <div class="stat-card percentage"><div class="stat-icon"><i class="fas fa-percent"></i></div><div class="stat-info"><span class="stat-label">Успешность</span><span class="stat-value" id="successRate">0%</span></div></div>
+    <div class="stat-card">
+        <div class="stat-head"><div class="stat-icon"><i class="fas fa-tasks"></i></div></div>
+        <div class="stat-info"><span class="stat-label">Всего задач</span><span class="stat-value" id="totalTasks">0</span></div>
+    </div>
+    <div class="stat-card percentage">
+        <div class="stat-head"><div class="stat-icon"><i class="fas fa-clock"></i></div></div>
+        <div class="stat-info"><span class="stat-label">В очереди</span><span class="stat-value" id="pendingTasks">0</span></div>
+    </div>
+    <div class="stat-card duration">
+        <div class="stat-head"><div class="stat-icon"><i class="fas fa-check-circle"></i></div></div>
+        <div class="stat-info"><span class="stat-label">Выполнено</span><span class="stat-value" id="completedTasks">0</span></div>
+    </div>
+    <div class="stat-card percentage">
+        <div class="stat-head"><div class="stat-icon"><i class="fas fa-percent"></i></div></div>
+        <div class="stat-info"><span class="stat-label">Успешность</span><span class="stat-value" id="successRate">0%</span></div>
+    </div>
 </div>
 
-<div class="recent-calls cb-section">
-    <div class="section-header">
-        <h3><i class="fas fa-list-ul"></i> Задачи обратного звонка</h3>
-        <span id="taskCount" class="subtle-text"></span>
+<div class="tasks-toolbar">
+    <div class="seg" id="statusSeg">
+        <button class="seg-btn active" data-status="" onclick="setStatusFilter('', this)">Все</button>
+        <button class="seg-btn" data-status="pending" onclick="setStatusFilter('pending', this)">В очереди</button>
+        <button class="seg-btn" data-status="in_progress" onclick="setStatusFilter('in_progress', this)">В процессе</button>
+        <button class="seg-btn" data-status="completed" onclick="setStatusFilter('completed', this)">Выполнено</button>
+        <button class="seg-btn" data-status="failed" onclick="setStatusFilter('failed', this)">Ошибка</button>
+        <button class="seg-btn" data-status="expired" onclick="setStatusFilter('expired', this)">Истекло</button>
     </div>
-    <div class="cb-filters">
-        <label>Статус:</label>
-        <select id="filterStatus" onchange="loadTasks()">
-            <option value="">Все</option>
-            <option value="pending">В очереди</option>
-            <option value="in_progress">В процессе</option>
-            <option value="completed">Выполнено</option>
-            <option value="failed">Ошибка</option>
-            <option value="cancelled">Отменено</option>
-            <option value="expired">Истекло</option>
-        </select>
-        <input type="text" id="filterPhone" placeholder="Фильтр по номеру" oninput="debouncedLoad()">
+    <div class="topbar-spacer"></div>
+    <div class="search-mini">
+        <i class="fas fa-search"></i>
+        <input type="text" id="filterPhone" placeholder="Поиск по номеру…" oninput="debouncedLoad()">
     </div>
-    <div id="tasksList"><div class="loading">Загрузка...</div></div>
+    <select id="filterStatus" style="display:none"><option value=""></option></select>
 </div>
 
+<div class="calls-table-wrapper">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th style="width:30px"></th>
+                <th>Задача</th>
+                <th>Статус</th>
+                <th>Тип</th>
+                <th>Источник</th>
+                <th>Попытки</th>
+                <th>Создано</th>
+                <th>План</th>
+                <th style="text-align:right">Действия</th>
+            </tr>
+        </thead>
+        <tbody id="tasksBody">
+            <tr><td colspan="9"><div class="loading">Загрузка…</div></td></tr>
+        </tbody>
+    </table>
+</div>
 
 <div id="createModal" class="modal">
-    <div class="modal-content">
+    <div class="modal-content" style="max-width:560px">
         <span class="modal-close" onclick="closeCreateModal()">&times;</span>
         <h2>Создать задачу обратного звонка</h2>
         <form onsubmit="submitTask(event)">
@@ -82,25 +130,24 @@
         </form>
     </div>
 </div>
-
-<div id="attemptsModal" class="modal">
-    <div class="modal-content">
-        <span class="modal-close" onclick="document.getElementById('attemptsModal').style.display='none'">&times;</span>
-        <h2>История попыток</h2>
-        <div id="attemptsBody"><div class="loading">Загрузка...</div></div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 let tasks = [];
-
 let loadTimer = null;
-
+let expanded = new Set();
 const statusMap = { pending:'В очереди', in_progress:'В процессе', completed:'Выполнено', failed:'Ошибка', cancelled:'Отменено', expired:'Истекло' };
+const typeMap = { no_answer:'Пропущенный', voicemail:'Голос. почта', manual:'Ручной' };
 
 function debouncedLoad(){ clearTimeout(loadTimer); loadTimer = setTimeout(loadTasks, 350); }
+function setStatusFilter(v, el){
+    document.getElementById('filterStatus').value = v;
+    document.querySelectorAll('#statusSeg .seg-btn').forEach(b => b.classList.toggle('active', b === el));
+    loadTasks();
+}
+function fmt(dt){ return dt ? new Date(dt.replace(' ','T')).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'; }
+function avatarText(phone){ const d=(phone||'').replace(/\D/g,''); return d ? d.slice(-2) : '??'; }
 
 async function loadStats() {
     try {
@@ -124,33 +171,94 @@ async function loadTasks() {
         const d = await r.json();
         tasks = d.tasks || [];
         renderTasks(tasks);
-        document.getElementById('taskCount').textContent = 'Показано: ' + tasks.length;
+        document.getElementById('taskCount').textContent = 'Показано задач: ' + tasks.length;
     } catch (e) { console.error('tasks', e); }
 }
 
+function retryTimeline(t){
+    const max = Math.max(1, (t.max_retries ?? 3));
+    const done = t.retry_count || 0;
+    let dots = '';
+    for (let i=0;i<max;i++){
+        let cls = i < done ? 'done' : '';
+        if (t.status === 'failed' && i === done-1) cls = 'fail';
+        dots += '<span class="retry-dot '+cls+'"></span>';
+    }
+    return '<div class="retry-timeline">'+dots+'<span class="retry-cnt">'+done+'/'+max+'</span></div>';
+}
+
+function rowActions(t){
+    const active = (t.status === 'pending' || t.status === 'in_progress');
+    const retryable = (t.status === 'failed' || t.status === 'cancelled' || t.status === 'expired');
+    let b = '';
+    if (active) b += '<button onclick="event.stopPropagation();callNow('+t.id+')" class="task-inline-button" title="Позвонить сейчас"><i class="fas fa-phone-volume"></i></button>';
+    if (active) b += '<button onclick="event.stopPropagation();cancelTask('+t.id+')" class="task-inline-button" title="Отменить"><i class="fas fa-times"></i></button>';
+    if (retryable) b += '<button onclick="event.stopPropagation();retryTask('+t.id+')" class="task-inline-button" title="Повторить"><i class="fas fa-redo"></i></button>';
+    return b;
+}
+
 function renderTasks(list) {
-    const c = document.getElementById('tasksList');
-    if (!list.length) { c.innerHTML = '<div class="no-data">Нет задач обратного звонка</div>'; return; }
+    const c = document.getElementById('tasksBody');
+    if (!list.length) { c.innerHTML = '<tr><td colspan="9"><div class="no-data">Нет задач обратного звонка</div></td></tr>'; return; }
     c.innerHTML = list.map(t => {
-        const created = t.created_at ? new Date(t.created_at.replace(' ','T')).toLocaleString('ru-RU') : 'N/A';
-        const sched = t.scheduled_at ? new Date(t.scheduled_at.replace(' ','T')).toLocaleString('ru-RU') : '';
-        const active = (t.status === 'pending' || t.status === 'in_progress');
-        const retryable = (t.status === 'failed' || t.status === 'cancelled');
-        let btns = '';
-        if (active) btns += '<button onclick="callNow('+t.id+')" class="task-inline-button" title="Позвонить сейчас"><i class="fas fa-phone-volume"></i></button>';
-        if (active) btns += '<button onclick="cancelTask('+t.id+')" class="task-inline-button" title="Отменить"><i class="fas fa-times"></i></button>';
-        if (retryable) btns += '<button onclick="retryTask('+t.id+')" class="task-inline-button" title="Повторить"><i class="fas fa-redo"></i></button>';
-        btns += '<button onclick="showAttempts('+t.id+')" class="task-inline-button" title="История попыток"><i class="fas fa-history"></i></button>';
-        return '<div class="task-item"><div class="task-body">'
-            + '<div class="task-title">📞 ' + (t.phone||'N/A') + ' <span class="subtle-text">#'+t.id+'</span></div>'
-            + '<div class="task-meta">Создано: ' + created + (sched?(' • План: '+sched):'') + ' • Тип: ' + (t.call_type||'N/A')
-            + ' • Источник: ' + (t.source||'manual') + ' • Попыток: ' + (t.retry_count||0) + '/' + (t.max_retries??'-')
-            + (t.last_error ? (' • <span style="color:#d9534f">'+t.last_error+'</span>') : '') + '</div></div>'
-            + '<div class="task-actions"><span class="task-status '+t.status+'">'+(statusMap[t.status]||t.status)+'</span>'+btns+'</div></div>';
+        const tp = t.call_type || 'manual';
+        const isOpen = expanded.has(t.id);
+        const main = '<tr onclick="toggleExpand('+t.id+')" style="cursor:pointer">'
+            + '<td><button class="expand-btn'+(isOpen?' open':'')+'" onclick="event.stopPropagation();toggleExpand('+t.id+')"><i class="fas fa-chevron-right"></i></button></td>'
+            + '<td><div class="t-task"><div class="t-avatar '+tp+'">'+avatarText(t.phone)+'</div><div><div class="t-phone">'+(t.phone||'N/A')+'</div><div class="t-sub">#'+t.id+'</div></div></div></td>'
+            + '<td><span class="task-status '+t.status+'">'+(statusMap[t.status]||t.status)+'</span></td>'
+            + '<td>'+(typeMap[tp]||tp)+'</td>'
+            + '<td><span class="t-sub">'+(t.source||'manual')+'</span></td>'
+            + '<td>'+retryTimeline(t)+'</td>'
+            + '<td><span class="t-sub">'+fmt(t.created_at)+'</span></td>'
+            + '<td><span class="t-sub">'+fmt(t.scheduled_at)+'</span></td>'
+            + '<td><div class="row-actions">'+rowActions(t)+'</div></td>'
+            + '</tr>';
+        const detail = '<tr class="detail-row" id="detail-'+t.id+'" style="display:'+(isOpen?'table-row':'none')+'">'
+            + '<td colspan="9"><div class="detail-inner" id="detail-body-'+t.id+'">'+(isOpen?'<div class="loading">Загрузка…</div>':'')+'</div></td></tr>';
+        return main + detail;
     }).join('');
 }
 
-async function postAction(url, okMsg) {
+async function toggleExpand(id){
+    const row = document.getElementById('detail-'+id);
+    const btn = document.querySelector('#detail-'+id) ? document.querySelector('tr[onclick*="toggleExpand('+id+')"] .expand-btn') : null;
+    if (expanded.has(id)) {
+        expanded.delete(id); row.style.display='none'; if(btn) btn.classList.remove('open');
+    } else {
+        expanded.add(id); row.style.display='table-row'; if(btn) btn.classList.add('open');
+        await loadDetail(id);
+    }
+}
+
+async function loadDetail(id){
+    const body = document.getElementById('detail-body-'+id);
+    const t = tasks.find(x => x.id === id) || {};
+    body.innerHTML = '<div class="loading">Загрузка истории…</div>';
+    try {
+        const r = await fetch('/api/callback/task/'+id+'/attempts');
+        const d = await r.json();
+        const a = d.attempts || [];
+        let head = '<div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px">'
+            + '<div><div class="t-sub">Номер</div><div style="font-weight:600">'+(t.phone||'—')+'</div></div>'
+            + '<div><div class="t-sub">Тип</div><div style="font-weight:600">'+(typeMap[t.call_type]||t.call_type||'—')+'</div></div>'
+            + '<div><div class="t-sub">Попытки</div><div style="font-weight:600">'+(t.retry_count||0)+' / '+(t.max_retries??'—')+'</div></div>'
+            + (t.last_error ? '<div><div class="t-sub">Последняя ошибка</div><div style="font-weight:600;color:#FCA5A5">'+t.last_error+'</div></div>' : '')
+            + '</div>';
+        let tl;
+        if (!a.length) { tl = '<div class="no-data" style="padding:12px">Попыток ещё не было</div>'; }
+        else {
+            tl = '<div class="tl">'+a.map(x => {
+                const ts = fmt(x.created_at);
+                return '<div class="tl-item '+(x.status||'')+'"><div class="tl-title">Попытка #'+(x.attempt_number||'-')+' — '+(statusMap[x.status]||x.status)+'</div>'
+                    + '<div class="tl-meta">'+ts+(x.channel?(' • '+x.channel):'')+(x.duration?(' • '+x.duration+' сек'):'')+(x.error_message?(' • <span style="color:#FCA5A5">'+x.error_message+'</span>'):'')+'</div></div>';
+            }).join('')+'</div>';
+        }
+        body.innerHTML = head + tl;
+    } catch (e) { body.innerHTML = '<div class="no-data">Ошибка загрузки</div>'; }
+}
+
+async function postAction(url) {
     try {
         const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
         const p = await r.json();
@@ -158,35 +266,12 @@ async function postAction(url, okMsg) {
         refreshData();
     } catch (e) { alert(e.message); }
 }
-
 function cancelTask(id){ if(confirm('Отменить задачу #'+id+'?')) postAction('/api/callback/task/'+id+'/cancel'); }
-
 function callNow(id){ postAction('/api/callback/task/'+id+'/call-now'); }
-
 function retryTask(id){ postAction('/api/callback/task/'+id+'/retry'); }
 
-async function showAttempts(id) {
-    const modal = document.getElementById('attemptsModal');
-    const body = document.getElementById('attemptsBody');
-    body.innerHTML = '<div class="loading">Загрузка...</div>';
-    modal.style.display = 'block';
-    try {
-        const r = await fetch('/api/callback/task/'+id+'/attempts');
-        const d = await r.json();
-        const a = d.attempts || [];
-        if (!a.length) { body.innerHTML = '<div class="no-data">Попыток ещё не было</div>'; return; }
-        body.innerHTML = a.map(x => {
-            const ts = x.created_at ? new Date(x.created_at.replace(' ','T')).toLocaleString('ru-RU') : '';
-            return '<div class="task-item"><div class="task-body"><div class="task-title">Попытка #'+(x.attempt_number||'-')+' — '+(statusMap[x.status]||x.status)+'</div>'
-                + '<div class="task-meta">'+ts+(x.channel?(' • '+x.channel):'')+(x.duration?(' • '+x.duration+' сек'):'')+(x.error_message?(' • <span style="color:#d9534f">'+x.error_message+'</span>'):'')+'</div></div></div>';
-        }).join('');
-    } catch (e) { body.innerHTML = '<div class="no-data">Ошибка загрузки</div>'; }
-}
-
 function openCreateModal(){ document.getElementById('createModal').style.display='block'; }
-
 function closeCreateModal(){ document.getElementById('createModal').style.display='none'; }
-
 async function submitTask(e) {
     e.preventDefault();
     const body = {
@@ -199,12 +284,9 @@ async function submitTask(e) {
         const r = await fetch('/api/callback/tasks', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
         const p = await r.json();
         if (!r.ok) throw new Error(p.error || 'Ошибка создания');
-        closeCreateModal();
-        refreshData();
+        closeCreateModal(); refreshData();
     } catch (e) { alert(e.message); }
 }
-
-function refreshData(){ loadStats(); loadTasks(); }
 
 async function clearTasks(){
     if(!confirm('Удалить ВСЕ задачи обратного звонка и историю попыток? Это действие необратимо.')) return;
@@ -217,9 +299,7 @@ async function clearTasks(){
     } catch(e){ alert(e.message); }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    refreshData();
-    setInterval(refreshData, 15000);
-});
+function refreshData(){ loadStats(); loadTasks(); }
+document.addEventListener('DOMContentLoaded', () => { refreshData(); setInterval(refreshData, 15000); });
 </script>
 {% endblock %}

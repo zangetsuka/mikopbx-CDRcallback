@@ -167,6 +167,7 @@ async function loadTasks() {
         const params = new URLSearchParams({ limit: '100' });
         if (status) params.set('status', status);
         if (phone) params.set('phone', phone);
+        if (window.__urlOperator) params.set('operator', window.__urlOperator);
         const r = await fetch('/api/callback/tasks?' + params.toString());
         const d = await r.json();
         tasks = d.tasks || [];
@@ -300,6 +301,17 @@ async function clearTasks(){
 }
 
 function refreshData(){ loadStats(); loadTasks(); }
-document.addEventListener('DOMContentLoaded', () => { refreshData(); setInterval(refreshData, 15000); });
+document.addEventListener('DOMContentLoaded', () => {
+    var sp = new URLSearchParams(window.location.search);
+    var ph = sp.get('phone'); var op = sp.get('operator'); var st = sp.get('status');
+    if (ph) document.getElementById('filterPhone').value = ph;
+    if (st) { var fs = document.getElementById('filterStatus'); if (fs) fs.value = st; }
+    if (op) {
+        window.__urlOperator = op;
+        var fp = document.getElementById('filterPhone');
+        if (fp) { fp.placeholder = 'Оператор: ' + op; }
+    }
+    refreshData(); setInterval(refreshData, 15000);
+});
 </script>
 {% endblock %}

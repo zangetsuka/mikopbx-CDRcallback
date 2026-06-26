@@ -246,6 +246,14 @@ function exportCSV() {
     window.location.href = suffix ? `/api/export/csv?${suffix}` : '/api/export/csv';
 }
 
+
+(function(){
+    var sp = new URLSearchParams(window.location.search);
+    var s = sp.get('search');
+    var t = sp.get('type');
+    if (s) document.getElementById('searchInput').value = s;
+    if (t) { var ft = document.getElementById('filterType'); if (ft) ft.value = t; }
+})();
 loadCalls();
 </script>
 {% endblock %}

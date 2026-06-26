@@ -10,6 +10,34 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+      .topbar-search { position: relative; }
+      .search-results {
+        position: absolute; top: calc(100% + 8px); left: 0; right: 0;
+        background: var(--surface, #161B22); border: 1px solid var(--border, #2a3340);
+        border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.45);
+        max-height: 70vh; overflow-y: auto; z-index: 1200; padding: 6px;
+      }
+      .search-results .sr-group-title {
+        font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+        color: var(--text-muted, #8b97a8); padding: 8px 10px 4px; font-weight: 600;
+      }
+      .search-results .sr-item {
+        display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+        border-radius: 8px; cursor: pointer; color: var(--text, #e6edf3);
+        text-decoration: none; font-size: 13px;
+      }
+      .search-results .sr-item:hover, .search-results .sr-item.active { background: rgba(88,166,255,.12); }
+      .search-results .sr-item i { width: 18px; text-align: center; color: var(--text-muted, #8b97a8); }
+      .search-results .sr-item .sr-main { font-weight: 600; }
+      .search-results .sr-item .sr-sub { color: var(--text-muted, #8b97a8); font-size: 12px; margin-left: auto; }
+      .search-results .sr-empty { padding: 16px; text-align: center; color: var(--text-muted, #8b97a8); font-size: 13px; }
+      .search-results .sr-chip { font-size: 11px; padding: 1px 7px; border-radius: 6px; background: rgba(139,151,168,.18); }
+      .search-results .sr-chip.completed { background: rgba(46,204,113,.18); color: #2ecc71; }
+      .search-results .sr-chip.pending { background: rgba(241,196,15,.18); color: #f1c40f; }
+      .search-results .sr-chip.failed, .search-results .sr-chip.expired { background: rgba(231,76,60,.18); color: #e74c3c; }
+    </style>
 </head>
 <body>
     <!-- SIDEBAR -->
@@ -53,10 +81,11 @@
     <!-- TOPBAR -->
     <header class="topbar">
         <button class="icon-btn" id="menuBtn" onclick="document.getElementById('sidebar').classList.toggle('open')" style="display:none" aria-label="Меню"><i class="fas fa-bars"></i></button>
-        <div class="topbar-search">
+        <div class="topbar-search" id="searchBox">
             <i class="fas fa-search"></i>
             <input type="text" id="globalSearch" placeholder="Поиск по номеру, оператору, задаче…" autocomplete="off">
             <kbd>/</kbd>
+            <div class="search-results" id="searchResults" hidden></div>
         </div>
         <div class="topbar-spacer"></div>
         <div class="pbx-status" id="pbxStatus" title="Статус подключения к АТС">
@@ -120,5 +149,92 @@
     </script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block scripts %}{% endblock %}
+
+    <script>
+    (function(){
+      var input = document.getElementById('globalSearch');
+      var box = document.getElementById('searchResults');
+      if (!input || !box) return;
+      var timer = null, items = [], active = -1;
+
+      function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+      function close(){ box.hidden = true; box.innerHTML=''; items=[]; active=-1; }
+
+      function render(data){
+        var html = '';
+        items = [];
+        if (data.calls && data.calls.length){
+          html += '<div class="sr-group-title">Звонки</div>';
+          data.calls.forEach(function(c){
+            var num = c.src || c.dst || '';
+            var url = '/calls?search=' + encodeURIComponent(num);
+            items.push(url);
+            html += '<a class="sr-item" href="'+url+'"><i class="fas fa-phone"></i>'+
+              '<span class="sr-main">'+esc(c.src||'?')+' → '+esc(c.dst||'?')+'</span>'+
+              '<span class="sr-sub">'+esc(c.started_at||'')+'</span></a>';
+          });
+        }
+        if (data.tasks && data.tasks.length){
+          html += '<div class="sr-group-title">Задачи</div>';
+          data.tasks.forEach(function(t){
+            var url = '/callback/tasks?phone=' + encodeURIComponent(t.phone||'');
+            items.push(url);
+            var st = (t.status||'').toLowerCase();
+            html += '<a class="sr-item" href="'+url+'"><i class="fas fa-list-check"></i>'+
+              '<span class="sr-main">#'+esc(t.id)+' · '+esc(t.phone||'')+'</span>'+
+              '<span class="sr-sub"><span class="sr-chip '+esc(st)+'">'+esc(t.status||'')+'</span></span></a>';
+          });
+        }
+        if (data.operators && data.operators.length){
+          html += '<div class="sr-group-title">Операторы</div>';
+          data.operators.forEach(function(o){
+            var url = '/callback/tasks?operator=' + encodeURIComponent(o.ext||'');
+            items.push(url);
+            html += '<a class="sr-item" href="'+url+'"><i class="fas fa-headset"></i>'+
+              '<span class="sr-main">Оператор '+esc(o.ext)+'</span>'+
+              '<span class="sr-sub">'+esc(o.completed||0)+'/'+esc(o.total||0)+' задач</span></a>';
+          });
+        }
+        if (!html){ html = '<div class="sr-empty">Ничего не найдено</div>'; }
+        box.innerHTML = html;
+        box.hidden = false;
+        active = -1;
+      }
+
+      function doSearch(){
+        var q = input.value.trim();
+        if (q.length < 2){ close(); return; }
+        fetch('/api/search?q=' + encodeURIComponent(q))
+          .then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
+          .then(render)
+          .catch(function(){ close(); });
+      }
+
+      input.addEventListener('input', function(){ clearTimeout(timer); timer = setTimeout(doSearch, 220); });
+      input.addEventListener('focus', function(){ if (input.value.trim().length>=2) doSearch(); });
+
+      var nodes = function(){ return box.querySelectorAll('.sr-item'); };
+      input.addEventListener('keydown', function(e){
+        var n = nodes();
+        if (e.key === 'ArrowDown'){ e.preventDefault(); active=Math.min(active+1,n.length-1); }
+        else if (e.key === 'ArrowUp'){ e.preventDefault(); active=Math.max(active-1,0); }
+        else if (e.key === 'Enter'){ if (active>=0 && items[active]){ window.location.href=items[active]; } else { doSearch(); } return; }
+        else if (e.key === 'Escape'){ close(); input.blur(); return; }
+        else return;
+        n.forEach(function(el,i){ el.classList.toggle('active', i===active); });
+        if (n[active]) n[active].scrollIntoView({block:'nearest'});
+      });
+
+      document.addEventListener('click', function(e){
+        if (!document.getElementById('searchBox').contains(e.target)) close();
+      });
+      document.addEventListener('keydown', function(e){
+        if (e.key === '/' && document.activeElement !== input &&
+            !/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||'')){
+          e.preventDefault(); input.focus();
+        }
+      });
+    })();
+    </script>
 </body>
 </html>

@@ -497,6 +497,7 @@ class Database:
         limit: int = 50,
         status: str | None = None,
         phone: str | None = None,
+        operator: str | None = None,
     ) -> list[dict[str, Any]]:
         query = ["SELECT * FROM callback_tasks"]
         params: list[Any] = []
@@ -509,6 +510,10 @@ class Database:
         if phone:
             filters.append("phone LIKE ?")
             params.append(f"%{phone}%")
+
+        if operator:
+            filters.append("operator_extension LIKE ?")
+            params.append(f"%{operator}%")
 
         if filters:
             query.append("WHERE " + " AND ".join(filters))
@@ -542,6 +547,44 @@ class Database:
             )
             row = cursor.fetchone()
             return dict(row) if row else None
+
+    def search_tasks(self, q: str, limit: int = 6) -> list[dict[str, Any]]:
+        like = f"%{q}%"
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM callback_tasks
+                WHERE phone LIKE ?
+                   OR operator_extension LIKE ?
+                   OR CAST(id AS TEXT) LIKE ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (like, like, like, max(1, limit)),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def search_operators(self, q: str, limit: int = 6) -> list[dict[str, Any]]:
+        like = f"%{q}%"
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT operator_extension AS ext,
+                       COUNT(*) AS total,
+                       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed
+                FROM callback_tasks
+                WHERE operator_extension IS NOT NULL
+                  AND operator_extension <> ''
+                  AND operator_extension LIKE ?
+                GROUP BY operator_extension
+                ORDER BY total DESC
+                LIMIT ?
+                """,
+                (like, max(1, limit)),
+            )
+            return [dict(row) for row in cursor.fetchall()]
 
     def get_due_callback_tasks(self, limit: int = 20) -> list[dict[str, Any]]:
         now_value = _now_str()

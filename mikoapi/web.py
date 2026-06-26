@@ -138,6 +138,49 @@ def create_app(config: AppConfig, services: ServiceContainer) -> Flask:
         return jsonify(data)
 
 
+    @app.route("/api/search")
+    def global_search():
+        q = (request.args.get("q") or "").strip()
+        result = {"query": q, "calls": [], "tasks": [], "operators": []}
+        if len(q) < 2:
+            return jsonify(result)
+        db = services.db
+        try:
+            calls = db.get_calls(search=q, limit=6)
+            for c in calls:
+                result["calls"].append({
+                    "id": c.get("id"),
+                    "src": c.get("src_num"),
+                    "dst": c.get("dst_num"),
+                    "type": c.get("call_type"),
+                    "started_at": c.get("started_at") or c.get("start_time"),
+                    "disposition": c.get("disposition"),
+                })
+        except Exception as exc:
+            logging.getLogger("web").warning("search calls failed: %s", exc)
+        try:
+            for t in db.search_tasks(q, limit=6):
+                result["tasks"].append({
+                    "id": t.get("id"),
+                    "phone": t.get("phone"),
+                    "status": t.get("status"),
+                    "operator": t.get("operator_extension"),
+                    "attempts": t.get("attempts"),
+                    "scheduled_at": t.get("scheduled_at"),
+                })
+        except Exception as exc:
+            logging.getLogger("web").warning("search tasks failed: %s", exc)
+        try:
+            for o in db.search_operators(q, limit=6):
+                result["operators"].append({
+                    "ext": o.get("ext"),
+                    "total": o.get("total"),
+                    "completed": o.get("completed"),
+                })
+        except Exception as exc:
+            logging.getLogger("web").warning("search operators failed: %s", exc)
+        return jsonify(result)
+
     @app.route("/api/service/status")
     def service_status():
         return jsonify(services.get_status())
@@ -248,7 +291,8 @@ def create_app(config: AppConfig, services: ServiceContainer) -> Flask:
         limit = request.args.get("limit", 50, type=int)
         status = request.args.get("status") or None
         phone = request.args.get("phone") or None
-        tasks = _db().get_callback_tasks(limit=limit, status=status, phone=phone)
+        operator = request.args.get("operator") or None
+        tasks = _db().get_callback_tasks(limit=limit, status=status, phone=phone, operator=operator)
         return jsonify({"tasks": tasks, "total": len(tasks)})
 
     @app.route("/api/callback/task", methods=["POST"])

@@ -20,7 +20,14 @@ from flask import (
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
-from .callback import gather_live_pbx_metrics, normalize_phone
+from .callback import (
+    build_task_schedule,
+    format_work_days,
+    gather_live_pbx_metrics,
+    get_work_time_intervals,
+    normalize_phone,
+    normalize_work_time_intervals,
+)
 from .config import AppConfig
 from .service import ServiceContainer
 
@@ -78,7 +85,15 @@ def create_app(config: AppConfig, services: ServiceContainer) -> Flask:
         return services.db
 
     def _callback_settings() -> dict[str, Any]:
-        return _db().get_callback_settings(config.callback.settings_defaults())
+        settings = _db().get_callback_settings(config.callback.settings_defaults())
+        intervals = get_work_time_intervals(settings)
+        settings["work_time_intervals"] = intervals
+        if intervals:
+            first_interval = intervals[0]
+            settings["work_hours_start"] = first_interval["start"]
+            settings["work_hours_end"] = first_interval["end"]
+            settings["work_days"] = format_work_days(first_interval["days"])
+        return settings
 
     def _coerce_bool(value: Any) -> bool:
         if isinstance(value, bool):
@@ -295,12 +310,10 @@ def create_app(config: AppConfig, services: ServiceContainer) -> Flask:
         tasks = _db().get_callback_tasks(limit=limit, status=status, phone=phone, operator=operator)
         return jsonify({"tasks": tasks, "total": len(tasks)})
 
-    @app.route("/api/callback/task", methods=["POST"])
-    def callback_create_task():
-        payload = request.get_json(silent=True) or {}
+    def _create_callback_task_response(payload: dict[str, Any], source: str, default_call_type: str, max_retries: int) -> tuple[dict[str, Any], int]:
         phone = normalize_phone(payload.get("phone"))
         if not phone:
-            return jsonify({"error": "Phone number is required"}), 400
+            return {"error": "Phone number is required"}, 400
 
         delay_seconds = payload.get("delay_seconds")
         if delay_seconds in (None, ""):
@@ -309,26 +322,56 @@ def create_app(config: AppConfig, services: ServiceContainer) -> Flask:
             delay_seconds = int(delay_seconds or 0)
             priority = int(payload.get("priority") or 5)
         except (TypeError, ValueError):
-            return jsonify({"error": "Invalid delay or priority value"}), 400
+            return {"error": "Invalid delay or priority value"}, 400
+
+        settings = _callback_settings()
+        schedule = build_task_schedule(settings, delay_seconds)
 
         task_id = _db().create_callback_task(
             phone=phone,
-            call_type=str(payload.get("call_type") or "manual"),
+            call_type=str(payload.get("call_type") or default_call_type),
             call_id=payload.get("call_id"),
             linkedid=payload.get("linkedid"),
-            delay_seconds=delay_seconds,
+            delay_seconds=schedule["delay_seconds"],
             priority=priority,
-            source="manual",
-            max_retries=config.callback.max_retries,
+            source=source,
+            max_retries=max_retries,
+            created_at=schedule["created_at"].strftime("%Y-%m-%d %H:%M:%S"),
+            requested_at=schedule["requested_at"].strftime("%Y-%m-%d %H:%M:%S"),
+            scheduled_at=schedule["scheduled_at"].strftime("%Y-%m-%d %H:%M:%S"),
+            schedule_reason=schedule["schedule_reason"],
         )
-        logger.info("Created manual callback task #%s for %s", task_id, phone)
-        return jsonify(
+        logger.info("Created %s callback task #%s for %s", source, task_id, phone)
+        message = f"Task #{task_id} created for {phone}"
+        if schedule["deferred_to_work_hours"]:
+            message += (
+                f" and deferred to work hours at "
+                f"{schedule['scheduled_at'].strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+        return (
             {
                 "success": True,
                 "task_id": task_id,
-                "message": f"Task #{task_id} created for {phone}",
-            }
+                "message": message,
+                "scheduled_at": schedule["scheduled_at"].strftime("%Y-%m-%d %H:%M:%S"),
+                "requested_at": schedule["requested_at"].strftime("%Y-%m-%d %H:%M:%S"),
+                "schedule_reason": schedule["schedule_reason"],
+                "deferred_to_work_hours": schedule["deferred_to_work_hours"],
+            },
+            200,
         )
+
+    @app.route("/api/callback/task", methods=["POST"])
+    @app.route("/api/callback/tasks", methods=["POST"])
+    def callback_create_task():
+        payload = request.get_json(silent=True) or {}
+        body, status_code = _create_callback_task_response(
+            payload,
+            source="manual",
+            default_call_type="manual",
+            max_retries=config.callback.max_retries,
+        )
+        return jsonify(body), status_code
 
     @app.route("/api/callback/task/<int:task_id>")
     def callback_get_task(task_id: int):
@@ -351,8 +394,35 @@ def create_app(config: AppConfig, services: ServiceContainer) -> Flask:
     def callback_update_settings():
         payload = request.get_json(silent=True) or {}
         defaults = config.callback.settings_defaults()
+        current_settings = _callback_settings()
         updates: dict[str, Any] = {}
         for key, value in payload.items():
+            if key == "work_time_intervals":
+                intervals = normalize_work_time_intervals(
+                    value,
+                    current_settings.get("work_days"),
+                )
+                work_hours_enabled = _coerce_bool(
+                    payload.get(
+                        "work_hours_enabled",
+                        current_settings.get("work_hours_enabled", False),
+                    )
+                )
+                if work_hours_enabled and not intervals:
+                    return jsonify(
+                        {
+                            "error": (
+                                "Add at least one work time interval or disable work hours"
+                            )
+                        }
+                    ), 400
+                updates[key] = intervals
+                if intervals:
+                    first_interval = intervals[0]
+                    updates["work_hours_start"] = first_interval["start"]
+                    updates["work_hours_end"] = first_interval["end"]
+                    updates["work_days"] = format_work_days(first_interval["days"])
+                continue
             if key not in defaults:
                 continue
             default_value = defaults[key]
@@ -365,6 +435,22 @@ def create_app(config: AppConfig, services: ServiceContainer) -> Flask:
                     updates[key] = value
             except (TypeError, ValueError):
                 continue
+        if (
+            "work_time_intervals" not in updates
+            and {"work_hours_start", "work_hours_end", "work_days"} & updates.keys()
+        ):
+            merged_settings = dict(current_settings)
+            merged_settings.update(updates)
+            updates["work_time_intervals"] = normalize_work_time_intervals(
+                [
+                    {
+                        "start": merged_settings.get("work_hours_start"),
+                        "end": merged_settings.get("work_hours_end"),
+                        "days": merged_settings.get("work_days"),
+                    }
+                ],
+                merged_settings.get("work_days"),
+            )
         if updates:
             _db().update_callback_settings(updates)
         return jsonify(
@@ -415,27 +501,16 @@ def create_app(config: AppConfig, services: ServiceContainer) -> Flask:
 
     @app.route("/api/callback/test", methods=["POST"])
     def callback_test():
-        payload = request.get_json(silent=True) or {}
-        phone = normalize_phone(payload.get("phone"))
-        if not phone:
-            return jsonify({"error": "Phone number is required"}), 400
-
-        task_id = _db().create_callback_task(
-            phone=phone,
-            call_type="test",
-            delay_seconds=10,
-            priority=10,
+        body, status_code = _create_callback_task_response(
+            request.get_json(silent=True) or {},
             source="test",
+            default_call_type="test",
             max_retries=1,
         )
-        logger.info("Created test callback task #%s for %s", task_id, phone)
-        return jsonify(
-            {
-                "success": True,
-                "task_id": task_id,
-                "message": f"Test callback scheduled for {phone}",
-            }
-        )
+        if status_code != 200:
+            return jsonify(body), status_code
+        body["message"] = body["message"].replace("Task #", "Test callback task #")
+        return jsonify(body)
 
     @app.errorhandler(Exception)
     def handle_exception(exc: Exception):

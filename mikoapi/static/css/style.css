@@ -439,6 +439,54 @@ input::placeholder { color: var(--text-3); }
 }
 .field-toggle .ft-text b { font-size: 13.5px; font-weight: 500; display: block; }
 .field-toggle .ft-text span { font-size: 11.5px; color: var(--text-3); }
+.work-intervals { display: flex; flex-direction: column; gap: 14px; }
+.work-interval-row {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.work-interval-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.work-interval-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.work-interval-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.weekday-picker { display: flex; flex-wrap: wrap; gap: 8px; }
+.weekday-chip { position: relative; display: inline-flex; }
+.weekday-chip input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.weekday-chip span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 42px;
+    padding: 8px 12px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--border-strong);
+    background: var(--bg-input);
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--t), color var(--t), border-color var(--t), box-shadow var(--t);
+}
+.weekday-chip input:checked + span {
+    background: var(--blue-soft);
+    color: var(--blue-2);
+    border-color: rgba(79,124,255,0.35);
+    box-shadow: inset 0 1px 0 var(--glass-top);
+}
+.weekday-chip input:focus + span { box-shadow: var(--ring); }
 
 /* ============================================================
    MODAL

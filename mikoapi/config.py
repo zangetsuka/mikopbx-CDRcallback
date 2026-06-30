@@ -116,6 +116,13 @@ class CallbackConfig:
             "work_hours_start": "09:00",
             "work_hours_end": "20:00",
             "work_days": "1,2,3,4,5",
+            "work_time_intervals": [
+                {
+                    "start": "09:00",
+                    "end": "20:00",
+                    "days": [1, 2, 3, 4, 5],
+                }
+            ],
             "dedup_window_minutes": 30,
             "delay_minutes": self.delay_minutes,
             "max_delay_minutes": self.max_delay_minutes,

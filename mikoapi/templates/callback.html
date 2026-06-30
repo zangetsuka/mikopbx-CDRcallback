@@ -9,69 +9,579 @@
         <div class="page-subtitle">Конфигурация автоматического обратного звонка</div>
     </div>
     <div class="header-controls">
-        <a href="/callback/tasks" class="btn-export"><i class="fas fa-list-check"></i> Задачи обратного звонка</a>
-        <button class="btn-export" onclick="testCallback()"><i class="fas fa-flask"></i> Тестовый вызов</button>
-        <button class="btn-refresh" onclick="saveSettings()"><i class="fas fa-save"></i> Сохранить</button>
+        <a href="/callback/tasks" class="btn-export">
+            <i class="fas fa-list-check"></i>
+            Задачи обратного звонка
+        </a>
+        <button class="btn-export" onclick="testCallback()">
+            <i class="fas fa-flask"></i>
+            Тестовый вызов
+        </button>
+        <button class="btn-refresh" onclick="saveSettings()">
+            <i class="fas fa-save"></i>
+            Сохранить
+        </button>
     </div>
 </div>
 
-<div class="tabs"><button class="tab active" data-tab="general" onclick="switchTab('general')"><i class="fas fa-gear"></i> Общее</button><button class="tab" data-tab="routing" onclick="switchTab('routing')"><i class="fas fa-route"></i> Маршрутизация</button><button class="tab" data-tab="retry" onclick="switchTab('retry')"><i class="fas fa-rotate"></i> Логика повторов</button><button class="tab" data-tab="voice" onclick="switchTab('voice')"><i class="fas fa-microphone-lines"></i> Голосовые сообщения</button><button class="tab" data-tab="hours" onclick="switchTab('hours')"><i class="fas fa-clock"></i> Рабочее время</button><button class="tab" data-tab="limits" onclick="switchTab('limits')"><i class="fas fa-shield-halved"></i> Лимиты</button><button class="tab" data-tab="notify" onclick="switchTab('notify')"><i class="fas fa-bell"></i> Уведомления</button></div>
+<div class="tabs">
+    <button class="tab active" data-tab="general" onclick="switchTab('general')"><i class="fas fa-gear"></i> Общее</button>
+    <button class="tab" data-tab="routing" onclick="switchTab('routing')"><i class="fas fa-route"></i> Маршрутизация</button>
+    <button class="tab" data-tab="retry" onclick="switchTab('retry')"><i class="fas fa-rotate"></i> Логика повторов</button>
+    <button class="tab" data-tab="voice" onclick="switchTab('voice')"><i class="fas fa-microphone-lines"></i> Голосовые сообщения</button>
+    <button class="tab" data-tab="hours" onclick="switchTab('hours')"><i class="fas fa-clock"></i> Рабочее время</button>
+    <button class="tab" data-tab="limits" onclick="switchTab('limits')"><i class="fas fa-shield-halved"></i> Лимиты</button>
+    <button class="tab" data-tab="notify" onclick="switchTab('notify')"><i class="fas fa-bell"></i> Уведомления</button>
+</div>
 
-<div class="tab-panel active" id="panel-general"><div class="settings-card"><div class="sc-head"><div class="sc-icon"><i class="fas fa-power-off"></i></div><div><div class="sc-title">Состояние модуля</div><div class="sc-desc">Включение автоматического обзвона и создания задач из пропущенных вызовов.</div></div></div><div class="field-toggle"><div class="ft-text"><b>Модуль включён</b><span>Запускает фоновый обзвон по расписанию</span></div><label class="switch"><input type="checkbox" id="enabled"><span class="slider"></span></label></div><div style="height:12px"></div><div class="field-toggle"><div class="ft-text"><b>Авто-создание задач из CDR</b><span>Новые пропущенные автоматически попадают в очередь обзвона</span></div><label class="switch"><input type="checkbox" id="autoCreate"><span class="slider"></span></label></div></div><div class="settings-card"><div class="sc-head"><div class="sc-icon"><i class="fas fa-clone"></i></div><div><div class="sc-title">Защита от дублей и устаревания</div><div class="sc-desc">Не звонить повторно по одному номеру и не «доживать» задачам до следующего дня.</div></div></div><div class="field-grid"><div class="field"><label for="dedupWindow">Анти-дубль: окно (мин)</label><input id="dedupWindow" type="number" min="0" max="1440"><span class="helper">0 — выключено. В пределах окна повторная задача по номеру не создаётся.</span></div><div class="field"><label for="taskTtl">TTL задачи (мин)</label><input id="taskTtl" type="number" min="0"><span class="helper">0 — выключено. Задачи старше этого срока истекают вместо звонка.</span></div></div></div></div>
-<div class="tab-panel" id="panel-routing"><div class="settings-card"><div class="sc-head"><div class="sc-icon"><i class="fas fa-route"></i></div><div><div class="sc-title">Куда направлять звонок</div><div class="sc-desc">Выбор адресата обратного звонка: очередь операторов или конкретный внутренний номер.</div></div></div><div class="field-grid"><div class="field"><label for="routingMode">Режим маршрутизации</label><select id="routingMode" onchange="onRoutingChange()"><option value="queue">Очередь операторов</option><option value="operator">Сразу на внутренний номер</option></select><span class="helper">Очередь — звонок идёт в очередь; Внутренний — напрямую оператору.</span></div><div class="field" id="queueField"><label for="callbackQueue">Очередь (queue)</label><input type="text" id="callbackQueue" placeholder="callback_queue"></div><div class="field" id="operatorField"><label for="operatorExtension">Внутренний номер оператора</label><input type="text" id="operatorExtension" placeholder="201"></div></div></div><div class="settings-card"><div class="sc-head"><div class="sc-icon"><i class="fas fa-plug"></i></div><div><div class="sc-title">Канал и идентификация</div><div class="sc-desc">Технические параметры исходящего плеча и номер, который увидит клиент.</div></div></div><div class="field-grid"><div class="field"><label for="clientChannel">Шаблон канала клиента</label><input id="clientChannel" type="text" placeholder="Local/{phone}@outgoing"><span class="helper">{phone} подставляется автоматически. Напр. PJSIP/{phone} или Local/{phone}@outgoing</span></div><div class="field"><label for="callerId">CallerID исходящего звонка</label><input id="callerId" type="text" placeholder="напр. 74812283016"><span class="helper">Номер, который увидит клиент и который попадёт в CDR как «От». Обычно ваш городской DID.</span></div></div></div></div>
-<div class="tab-panel" id="panel-retry"><div class="settings-card"><div class="sc-head"><div class="sc-icon"><i class="fas fa-rotate"></i></div><div><div class="sc-title">Повторные попытки</div><div class="sc-desc">Сколько раз и с какими паузами перезванивать, если клиент не ответил.</div></div></div><div class="field-grid"><div class="field"><label for="maxRetries">Макс. число попыток</label><input id="maxRetries" type="number" min="0" max="10"></div><div class="field"><label for="retryDelay">Пауза между попытками (мин)</label><input id="retryDelay" type="number" min="0" max="120"><span class="helper">Используется, если backoff-расписание пустое.</span></div><div class="field"><label for="retryBackoff">Backoff-расписание (мин)</label><input id="retryBackoff" type="text" placeholder="5,15,30"><span class="helper">Нарастающие паузы, через запятую. Напр. 5,15,30</span></div></div></div><div class="settings-card"><div class="sc-head"><div class="sc-icon"><i class="fas fa-stopwatch"></i></div><div><div class="sc-title">Тайминг звонка</div><div class="sc-desc">Задержки запуска и таймауты дозвона.</div></div></div><div class="field-grid"><div class="field"><label for="delayNoAnswer">Задержка для пропущенных (мин)</label><input id="delayNoAnswer" type="number" min="0" max="1440"></div><div class="field"><label for="delayVoicemail">Задержка для голосовой почты (мин)</label><input id="delayVoicemail" type="number" min="0" max="1440"></div><div class="field"><label for="operatorRing">Время дозвона оператору (сек)</label><input id="operatorRing" type="number" min="0" max="120"></div><div class="field"><label for="originateTimeout">Таймаут дозвона (сек)</label><input id="originateTimeout" type="number" min="5" max="300"></div></div></div></div>
-<div class="tab-panel" id="panel-voice"><div class="settings-card"><div class="sc-head"><div class="sc-icon"><i class="fas fa-microphone-lines"></i></div><div><div class="sc-title">Голосовое уведомление</div><div class="sc-desc">Аудио-сообщение, которое проигрывается клиенту при обратном звонке.</div></div></div><div class="field-grid"><div class="field"><label for="notificationAudio">Сценарий озвучивания</label><select id="notificationAudio"><option value="callback-notification">Стандартное</option><option value="callback-urgent">Срочное</option><option value="callback-friendly">Дружелюбное</option></select><span class="helper">Файл проигрывается перед соединением с оператором.</span></div></div></div></div>
-<div class="tab-panel" id="panel-hours"><div class="settings-card"><div class="sc-head"><div class="sc-icon"><i class="fas fa-clock"></i></div><div><div class="sc-title">Рабочее время</div><div class="sc-desc">Обзвон выполняется только в указанные часы и дни недели.</div></div></div><div class="field-toggle"><div class="ft-text"><b>Звонить только в рабочее время</b><span>Вне окна задачи ждут начала следующего рабочего дня</span></div><label class="switch"><input type="checkbox" id="workHoursEnabled"><span class="slider"></span></label></div><div style="height:16px"></div><div class="field-grid"><div class="field"><label for="workStart">Начало</label><input id="workStart" type="time"></div><div class="field"><label for="workEnd">Конец</label><input id="workEnd" type="time"></div><div class="field"><label for="workDays">Дни недели</label><input id="workDays" type="text" placeholder="1,2,3,4,5"><span class="helper">1=Пн … 7=Вс, через запятую</span></div></div></div></div>
-<div class="tab-panel" id="panel-limits"><div class="settings-card"><div class="sc-head"><div class="sc-icon"><i class="fas fa-gauge-high"></i></div><div><div class="sc-title">Защита от перегрузки</div><div class="sc-desc">Ограничение интенсивности обзвона для защиты АТС от шторма вызовов.</div></div></div><div class="field-grid"><div class="field"><label for="maxPerMinute">Лимит звонков в минуту</label><input id="maxPerMinute" type="number" min="0" max="120"><span class="helper">0 — без лимита</span></div><div class="field"><label for="maxPerCycle">Лимит звонков за цикл</label><input id="maxPerCycle" type="number" min="0" max="100"><span class="helper">0 — без лимита</span></div></div></div><div class="settings-card"><div class="sc-head"><div class="sc-icon"><i class="fas fa-user-clock"></i></div><div><div class="sc-title">Проверка занятости оператора</div><div class="sc-desc">Не инициировать звонок, если оператор сейчас разговаривает или недоступен.</div></div></div><div class="field-toggle"><div class="ft-text"><b>Проверять занятость оператора</b><span>Откладывает задачу без расхода попытки, если оператор занят</span></div><label class="switch"><input type="checkbox" id="checkOperatorBusy"><span class="slider"></span></label></div><div style="height:16px"></div><div class="field-grid"><div class="field"><label for="busyExtension">Внутр. номер для проверки</label><input id="busyExtension" type="text" placeholder="напр. 302"><span class="helper">Пусто — берётся номер оператора из маршрутизации.</span></div><div class="field"><label for="busyContext">Контекст hint (ExtensionState)</label><input id="busyContext" type="text" placeholder="internal"></div><div class="field"><label for="busyRetry">Отложить при занятости (сек)</label><input id="busyRetry" type="number" min="5" max="600"></div></div></div></div>
-<div class="tab-panel" id="panel-notify"><div class="settings-card"><div class="sc-head"><div class="sc-icon"><i class="fas fa-bell"></i></div><div><div class="sc-title">Каналы уведомлений</div><div class="sc-desc">Внешние оповещения о событиях обзвона. Появятся в следующих версиях (Telegram, e-mail, webhook).</div></div></div><div class="no-data"><i class="fas fa-bell-slash" style="font-size:22px;opacity:.5"></i><div style="margin-top:8px">Каналы уведомлений пока не настроены</div></div></div><div class="settings-card"><div class="sc-head"><div class="sc-icon"><i class="fas fa-database"></i></div><div><div class="sc-title">Обслуживание базы данных</div><div class="sc-desc">Необратимые операции очистки. Используйте с осторожностью.</div></div></div><div class="form-actions" style="margin-top:0"><button type="button" class="btn-export btn-danger" onclick="clearTasksMaint()"><i class="fas fa-trash"></i> Очистить все заявки</button><button type="button" class="btn-export btn-danger" onclick="clearCdr()"><i class="fas fa-trash"></i> Очистить историю звонков (CDR)</button></div></div></div>
+<div class="tab-panel active" id="panel-general">
+    <div class="settings-card">
+        <div class="sc-head">
+            <div class="sc-icon"><i class="fas fa-power-off"></i></div>
+            <div>
+                <div class="sc-title">Состояние модуля</div>
+                <div class="sc-desc">Включение автоматического обзвона и создания задач из пропущенных вызовов.</div>
+            </div>
+        </div>
+        <div class="field-toggle">
+            <div class="ft-text">
+                <b>Модуль включён</b>
+                <span>Запускает фоновый обзвон по расписанию</span>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="enabled">
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div style="height:12px"></div>
+        <div class="field-toggle">
+            <div class="ft-text">
+                <b>Авто-создание задач из CDR</b>
+                <span>Новые пропущенные автоматически попадают в очередь обзвона</span>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="autoCreate">
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <div class="settings-card">
+        <div class="sc-head">
+            <div class="sc-icon"><i class="fas fa-clone"></i></div>
+            <div>
+                <div class="sc-title">Защита от дублей и устаревания</div>
+                <div class="sc-desc">Не звонить повторно по одному номеру и не «доживать» задачам до следующего дня.</div>
+            </div>
+        </div>
+        <div class="field-grid">
+            <div class="field">
+                <label for="dedupWindow">Анти-дубль: окно (мин)</label>
+                <input id="dedupWindow" type="number" min="0" max="1440">
+                <span class="helper">0 — выключено. В пределах окна повторная задача по номеру не создаётся.</span>
+            </div>
+            <div class="field">
+                <label for="taskTtl">TTL задачи (мин)</label>
+                <input id="taskTtl" type="number" min="0">
+                <span class="helper">0 — выключено. Задачи старше этого срока истекают вместо звонка.</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="tab-panel" id="panel-routing">
+    <div class="settings-card">
+        <div class="sc-head">
+            <div class="sc-icon"><i class="fas fa-route"></i></div>
+            <div>
+                <div class="sc-title">Куда направлять звонок</div>
+                <div class="sc-desc">Выбор адресата обратного звонка: очередь операторов или конкретный внутренний номер.</div>
+            </div>
+        </div>
+        <div class="field-grid">
+            <div class="field">
+                <label for="routingMode">Режим маршрутизации</label>
+                <select id="routingMode" onchange="onRoutingChange()">
+                    <option value="queue">Очередь операторов</option>
+                    <option value="operator">Сразу на внутренний номер</option>
+                </select>
+                <span class="helper">Очередь — звонок идёт в очередь; Внутренний — напрямую оператору.</span>
+            </div>
+            <div class="field" id="queueField">
+                <label for="callbackQueue">Очередь (queue)</label>
+                <input type="text" id="callbackQueue" placeholder="callback_queue">
+            </div>
+            <div class="field" id="operatorField">
+                <label for="operatorExtension">Внутренний номер оператора</label>
+                <input type="text" id="operatorExtension" placeholder="201">
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-card">
+        <div class="sc-head">
+            <div class="sc-icon"><i class="fas fa-plug"></i></div>
+            <div>
+                <div class="sc-title">Канал и идентификация</div>
+                <div class="sc-desc">Технические параметры исходящего плеча и номер, который увидит клиент.</div>
+            </div>
+        </div>
+        <div class="field-grid">
+            <div class="field">
+                <label for="clientChannel">Шаблон канала клиента</label>
+                <input id="clientChannel" type="text" placeholder="Local/{phone}@outgoing">
+                <span class="helper">{phone} подставляется автоматически. Напр. `PJSIP/{phone}` или `Local/{phone}@outgoing`.</span>
+            </div>
+            <div class="field">
+                <label for="callerId">CallerID исходящего звонка</label>
+                <input id="callerId" type="text" placeholder="например 74812283016">
+                <span class="helper">Номер, который увидит клиент и который попадёт в CDR как «От». Обычно ваш городской DID.</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="tab-panel" id="panel-retry">
+    <div class="settings-card">
+        <div class="sc-head">
+            <div class="sc-icon"><i class="fas fa-rotate"></i></div>
+            <div>
+                <div class="sc-title">Повторные попытки</div>
+                <div class="sc-desc">Сколько раз и с какими паузами перезванивать, если клиент не ответил.</div>
+            </div>
+        </div>
+        <div class="field-grid">
+            <div class="field">
+                <label for="maxRetries">Макс. число попыток</label>
+                <input id="maxRetries" type="number" min="0" max="10">
+            </div>
+            <div class="field">
+                <label for="retryDelay">Пауза между попытками (мин)</label>
+                <input id="retryDelay" type="number" min="0" max="120">
+                <span class="helper">Используется, если backoff-расписание пустое.</span>
+            </div>
+            <div class="field">
+                <label for="retryBackoff">Backoff-расписание (мин)</label>
+                <input id="retryBackoff" type="text" placeholder="5,15,30">
+                <span class="helper">Нарастающие паузы, через запятую. Например `5,15,30`.</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-card">
+        <div class="sc-head">
+            <div class="sc-icon"><i class="fas fa-stopwatch"></i></div>
+            <div>
+                <div class="sc-title">Тайминг звонка</div>
+                <div class="sc-desc">Задержки запуска и таймауты дозвона.</div>
+            </div>
+        </div>
+        <div class="field-grid">
+            <div class="field">
+                <label for="delayNoAnswer">Задержка для пропущенных (мин)</label>
+                <input id="delayNoAnswer" type="number" min="0" max="1440">
+            </div>
+            <div class="field">
+                <label for="delayVoicemail">Задержка для голосовой почты (мин)</label>
+                <input id="delayVoicemail" type="number" min="0" max="1440">
+            </div>
+            <div class="field">
+                <label for="operatorRing">Время дозвона оператору (сек)</label>
+                <input id="operatorRing" type="number" min="0" max="120">
+            </div>
+            <div class="field">
+                <label for="originateTimeout">Таймаут дозвона (сек)</label>
+                <input id="originateTimeout" type="number" min="5" max="300">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="tab-panel" id="panel-voice">
+    <div class="settings-card">
+        <div class="sc-head">
+            <div class="sc-icon"><i class="fas fa-microphone-lines"></i></div>
+            <div>
+                <div class="sc-title">Голосовое уведомление</div>
+                <div class="sc-desc">Аудио-сообщение, которое проигрывается клиенту при обратном звонке.</div>
+            </div>
+        </div>
+        <div class="field-grid">
+            <div class="field">
+                <label for="notificationAudio">Сценарий озвучивания</label>
+                <select id="notificationAudio">
+                    <option value="callback-notification">Стандартное</option>
+                    <option value="callback-urgent">Срочное</option>
+                    <option value="callback-friendly">Дружелюбное</option>
+                </select>
+                <span class="helper">Файл проигрывается перед соединением с оператором.</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="tab-panel" id="panel-hours">
+    <div class="settings-card">
+        <div class="sc-head">
+            <div class="sc-icon"><i class="fas fa-clock"></i></div>
+            <div>
+                <div class="sc-title">Рабочее время</div>
+                <div class="sc-desc">Обзвон выполняется только в разрешённые окна. Можно задать несколько интервалов, например отдельно до и после обеда.</div>
+            </div>
+        </div>
+
+        <div class="field-toggle">
+            <div class="ft-text">
+                <b>Звонить только в рабочее время</b>
+                <span>Вне активных интервалов задачи остаются в очереди до следующего разрешённого окна.</span>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="workHoursEnabled">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div style="height:16px"></div>
+
+        <div class="field-toggle">
+            <div class="ft-text">
+                <b>Интервалы обзвона</b>
+                <span>Пример: `09:00–13:00` и `14:00–18:00` по будням.</span>
+            </div>
+            <button type="button" class="btn-export" onclick="addWorkInterval()">
+                <i class="fas fa-plus"></i>
+                Добавить интервал
+            </button>
+        </div>
+
+        <div style="height:16px"></div>
+
+        <div id="workIntervals" class="work-intervals"></div>
+        <div id="workIntervalsEmpty" class="no-data" style="display:none;">
+            Интервалы не добавлены. Добавь хотя бы один интервал или отключи ограничение по рабочему времени.
+        </div>
+    </div>
+</div>
+
+<div class="tab-panel" id="panel-limits">
+    <div class="settings-card">
+        <div class="sc-head">
+            <div class="sc-icon"><i class="fas fa-gauge-high"></i></div>
+            <div>
+                <div class="sc-title">Защита от перегрузки</div>
+                <div class="sc-desc">Ограничение интенсивности обзвона для защиты АТС от шторма вызовов.</div>
+            </div>
+        </div>
+        <div class="field-grid">
+            <div class="field">
+                <label for="maxPerMinute">Лимит звонков в минуту</label>
+                <input id="maxPerMinute" type="number" min="0" max="120">
+                <span class="helper">0 — без лимита</span>
+            </div>
+            <div class="field">
+                <label for="maxPerCycle">Лимит звонков за цикл</label>
+                <input id="maxPerCycle" type="number" min="0" max="100">
+                <span class="helper">0 — без лимита</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-card">
+        <div class="sc-head">
+            <div class="sc-icon"><i class="fas fa-user-clock"></i></div>
+            <div>
+                <div class="sc-title">Проверка занятости оператора</div>
+                <div class="sc-desc">Не инициировать звонок, если оператор сейчас разговаривает или недоступен.</div>
+            </div>
+        </div>
+        <div class="field-toggle">
+            <div class="ft-text">
+                <b>Проверять занятость оператора</b>
+                <span>Откладывает задачу без расхода попытки, если оператор занят.</span>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="checkOperatorBusy">
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div style="height:16px"></div>
+        <div class="field-grid">
+            <div class="field">
+                <label for="busyExtension">Внутр. номер для проверки</label>
+                <input id="busyExtension" type="text" placeholder="например 302">
+                <span class="helper">Пусто — берётся номер оператора из маршрутизации.</span>
+            </div>
+            <div class="field">
+                <label for="busyContext">Контекст hint (ExtensionState)</label>
+                <input id="busyContext" type="text" placeholder="internal">
+            </div>
+            <div class="field">
+                <label for="busyRetry">Отложить при занятости (сек)</label>
+                <input id="busyRetry" type="number" min="5" max="600">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="tab-panel" id="panel-notify">
+    <div class="settings-card">
+        <div class="sc-head">
+            <div class="sc-icon"><i class="fas fa-bell"></i></div>
+            <div>
+                <div class="sc-title">Каналы уведомлений</div>
+                <div class="sc-desc">Внешние оповещения о событиях обзвона. Появятся в следующих версиях: Telegram, e-mail, webhook.</div>
+            </div>
+        </div>
+        <div class="no-data">
+            <i class="fas fa-bell-slash" style="font-size:22px;opacity:.5"></i>
+            <div style="margin-top:8px">Каналы уведомлений пока не настроены</div>
+        </div>
+    </div>
+
+    <div class="settings-card">
+        <div class="sc-head">
+            <div class="sc-icon"><i class="fas fa-database"></i></div>
+            <div>
+                <div class="sc-title">Обслуживание базы данных</div>
+                <div class="sc-desc">Необратимые операции очистки. Используй с осторожностью.</div>
+            </div>
+        </div>
+        <div class="form-actions" style="margin-top:0">
+            <button type="button" class="btn-export btn-danger" onclick="clearTasksMaint()">
+                <i class="fas fa-trash"></i>
+                Очистить все заявки
+            </button>
+            <button type="button" class="btn-export btn-danger" onclick="clearCdr()">
+                <i class="fas fa-trash"></i>
+                Очистить историю звонков (CDR)
+            </button>
+        </div>
+    </div>
+</div>
 
 <div class="form-actions" style="margin-top:8px">
-    <button class="btn-refresh" onclick="saveSettings()"><i class="fas fa-save"></i> Сохранить настройки</button>
-    <button class="btn-export" onclick="loadSettings()"><i class="fas fa-rotate-left"></i> Сбросить изменения</button>
+    <button class="btn-refresh" onclick="saveSettings()">
+        <i class="fas fa-save"></i>
+        Сохранить настройки
+    </button>
+    <button class="btn-export" onclick="loadSettings()">
+        <i class="fas fa-rotate-left"></i>
+        Сбросить изменения
+    </button>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+const WEEK_DAYS = [
+    { value: 1, label: 'Пн' },
+    { value: 2, label: 'Вт' },
+    { value: 3, label: 'Ср' },
+    { value: 4, label: 'Чт' },
+    { value: 5, label: 'Пт' },
+    { value: 6, label: 'Сб' },
+    { value: 7, label: 'Вс' }
+];
+
+let workIntervals = [];
+
+function parseWorkDays(value, fallback = [1, 2, 3, 4, 5]) {
+    const source = Array.isArray(value)
+        ? value
+        : String(value || '').replace(/;/g, ',').split(',');
+    const seen = new Set();
+    const days = [];
+
+    source.forEach((item) => {
+        const day = parseInt(String(item).trim(), 10);
+        if (!Number.isNaN(day) && day >= 1 && day <= 7 && !seen.has(day)) {
+            seen.add(day);
+            days.push(day);
+        }
+    });
+
+    days.sort((a, b) => a - b);
+    return days.length ? days : [...fallback];
+}
+
+function normalizeTime(value, fallback) {
+    const text = String(value || '').trim();
+    return /^\d{2}:\d{2}$/.test(text) ? text.slice(0, 5) : fallback;
+}
+
+function normalizeWorkIntervals(intervals, legacySettings = {}) {
+    const defaultDays = parseWorkDays(legacySettings.work_days || '1,2,3,4,5');
+    const normalized = Array.isArray(intervals)
+        ? intervals
+            .map((item) => {
+                if (!item || typeof item !== 'object') {
+                    return null;
+                }
+                return {
+                    start: normalizeTime(item.start, '09:00'),
+                    end: normalizeTime(item.end, '20:00'),
+                    days: parseWorkDays(item.days, defaultDays)
+                };
+            })
+            .filter(Boolean)
+        : [];
+
+    if (normalized.length) {
+        return normalized;
+    }
+
+    return [{
+        start: normalizeTime(legacySettings.work_hours_start, '09:00'),
+        end: normalizeTime(legacySettings.work_hours_end, '20:00'),
+        days: defaultDays
+    }];
+}
+
+function renderWorkIntervals() {
+    const container = document.getElementById('workIntervals');
+    const emptyState = document.getElementById('workIntervalsEmpty');
+
+    if (!container || !emptyState) {
+        return;
+    }
+
+    if (!workIntervals.length) {
+        container.innerHTML = '';
+        emptyState.style.display = 'block';
+        return;
+    }
+
+    emptyState.style.display = 'none';
+    container.innerHTML = workIntervals.map((interval, index) => `
+        <div class="work-interval-row">
+            <div class="work-interval-head">
+                <div class="work-interval-title">Интервал ${index + 1}</div>
+                <button type="button" class="btn-export" onclick="removeWorkInterval(${index})">
+                    <i class="fas fa-trash"></i>
+                    Удалить
+                </button>
+            </div>
+            <div class="work-interval-grid">
+                <div class="field">
+                    <label>Начало</label>
+                    <input type="time" value="${interval.start}" oninput="updateWorkInterval(${index}, 'start', this.value)">
+                </div>
+                <div class="field">
+                    <label>Конец</label>
+                    <input type="time" value="${interval.end}" oninput="updateWorkInterval(${index}, 'end', this.value)">
+                </div>
+                <div class="field">
+                    <label>Дни недели</label>
+                    <div class="weekday-picker">
+                        ${WEEK_DAYS.map((day) => `
+                            <label class="weekday-chip">
+                                <input
+                                    type="checkbox"
+                                    ${interval.days.includes(day.value) ? 'checked' : ''}
+                                    onchange="toggleWorkIntervalDay(${index}, ${day.value})"
+                                >
+                                <span>${day.label}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                    <span class="helper">Для обеда добавь два окна: например 09:00-13:00 и 14:00-18:00.</span>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function addWorkInterval() {
+    const template = workIntervals[workIntervals.length - 1] || {
+        start: '09:00',
+        end: '18:00',
+        days: [1, 2, 3, 4, 5]
+    };
+    workIntervals = [
+        ...workIntervals,
+        {
+            start: template.start,
+            end: template.end,
+            days: [...template.days]
+        }
+    ];
+    renderWorkIntervals();
+}
+
+function removeWorkInterval(index) {
+    workIntervals = workIntervals.filter((_, currentIndex) => currentIndex !== index);
+    renderWorkIntervals();
+}
+
+function updateWorkInterval(index, field, value) {
+    workIntervals = workIntervals.map((interval, currentIndex) => {
+        if (currentIndex !== index) {
+            return interval;
+        }
+        return {
+            ...interval,
+            [field]: normalizeTime(value, field === 'start' ? '09:00' : '20:00')
+        };
+    });
+}
+
+function toggleWorkIntervalDay(index, day) {
+    workIntervals = workIntervals.map((interval, currentIndex) => {
+        if (currentIndex !== index) {
+            return interval;
+        }
+        const days = interval.days.includes(day)
+            ? interval.days.filter((value) => value !== day)
+            : [...interval.days, day].sort((a, b) => a - b);
+        return {
+            ...interval,
+            days
+        };
+    });
+}
+
 async function loadSettings() {
     try {
-        const r = await fetch('/api/callback/settings');
-        const s = await r.json();
-        document.getElementById('enabled').checked = !!s.enabled;
-        document.getElementById('autoCreate').checked = !!s.auto_create;
-        document.getElementById('notificationAudio').value = s.notification_audio || 'callback-notification';
-        document.getElementById('routingMode').value = s.routing_mode || 'queue';
-        document.getElementById('callbackQueue').value = s.callback_queue || '';
-        document.getElementById('operatorExtension').value = s.operator_extension || '';
-        document.getElementById('clientChannel').value = s.client_channel_template || 'Local/{phone}@from-internal';
-        document.getElementById('callerId').value = s.caller_id || '';
-        document.getElementById('delayNoAnswer').value = s.delay_no_answer_minutes ?? 2;
-        document.getElementById('delayVoicemail').value = s.delay_voicemail_minutes ?? 2;
-        document.getElementById('operatorRing').value = s.operator_ring_seconds ?? 2;
-        document.getElementById('originateTimeout').value = s.originate_timeout ?? 60;
-        document.getElementById('maxRetries').value = s.max_retries ?? 3;
-        document.getElementById('retryDelay').value = s.retry_delay_minutes ?? 5;
-        document.getElementById('dedupWindow').value = s.dedup_window_minutes ?? 30;
-        document.getElementById('workHoursEnabled').checked = !!s.work_hours_enabled;
-        document.getElementById('workStart').value = s.work_hours_start || '09:00';
-        document.getElementById('workEnd').value = s.work_hours_end || '20:00';
-        document.getElementById('workDays').value = s.work_days || '1,2,3,4,5';
-        document.getElementById('taskTtl').value = s.task_ttl_minutes ?? 0;
-        document.getElementById('retryBackoff').value = s.retry_backoff_minutes ?? '5,15,30';
-        document.getElementById('maxPerMinute').value = s.max_calls_per_minute ?? 5;
-        document.getElementById('maxPerCycle').value = s.max_concurrent_calls ?? 0;
-        document.getElementById('checkOperatorBusy').checked = !!s.check_operator_busy;
-        document.getElementById('busyExtension').value = s.busy_check_extension || '';
-        document.getElementById('busyContext').value = s.busy_check_context || 'internal';
-        document.getElementById('busyRetry').value = s.busy_retry_seconds ?? 60;
+        const response = await fetch('/api/callback/settings');
+        const settings = await response.json();
+
+        document.getElementById('enabled').checked = !!settings.enabled;
+        document.getElementById('autoCreate').checked = !!settings.auto_create;
+        document.getElementById('notificationAudio').value = settings.notification_audio || 'callback-notification';
+        document.getElementById('routingMode').value = settings.routing_mode || 'queue';
+        document.getElementById('callbackQueue').value = settings.callback_queue || '';
+        document.getElementById('operatorExtension').value = settings.operator_extension || '';
+        document.getElementById('clientChannel').value = settings.client_channel_template || 'Local/{phone}@from-internal';
+        document.getElementById('callerId').value = settings.caller_id || '';
+        document.getElementById('delayNoAnswer').value = settings.delay_no_answer_minutes ?? 2;
+        document.getElementById('delayVoicemail').value = settings.delay_voicemail_minutes ?? 2;
+        document.getElementById('operatorRing').value = settings.operator_ring_seconds ?? 2;
+        document.getElementById('originateTimeout').value = settings.originate_timeout ?? 60;
+        document.getElementById('maxRetries').value = settings.max_retries ?? 3;
+        document.getElementById('retryDelay').value = settings.retry_delay_minutes ?? 5;
+        document.getElementById('dedupWindow').value = settings.dedup_window_minutes ?? 30;
+        document.getElementById('workHoursEnabled').checked = !!settings.work_hours_enabled;
+        document.getElementById('taskTtl').value = settings.task_ttl_minutes ?? 0;
+        document.getElementById('retryBackoff').value = settings.retry_backoff_minutes ?? '5,15,30';
+        document.getElementById('maxPerMinute').value = settings.max_calls_per_minute ?? 5;
+        document.getElementById('maxPerCycle').value = settings.max_concurrent_calls ?? 0;
+        document.getElementById('checkOperatorBusy').checked = !!settings.check_operator_busy;
+        document.getElementById('busyExtension').value = settings.busy_check_extension || '';
+        document.getElementById('busyContext').value = settings.busy_check_context || 'internal';
+        document.getElementById('busyRetry').value = settings.busy_retry_seconds ?? 60;
+
+        workIntervals = normalizeWorkIntervals(settings.work_time_intervals, settings);
+        renderWorkIntervals();
         onRoutingChange();
-    } catch (e) { console.error('settings', e); }
+    } catch (error) {
+        console.error('settings', error);
+    }
 }
 
 function onRoutingChange() {
     const mode = document.getElementById('routingMode').value;
-    document.getElementById('queueField').style.opacity = (mode === 'queue') ? '1' : '0.4';
-    document.getElementById('operatorField').style.opacity = (mode === 'operator') ? '1' : '0.85';
+    document.getElementById('queueField').style.opacity = mode === 'queue' ? '1' : '0.4';
+    document.getElementById('operatorField').style.opacity = mode === 'operator' ? '1' : '0.85';
 }
 
 async function saveSettings() {
@@ -83,19 +593,21 @@ async function saveSettings() {
         callback_queue: document.getElementById('callbackQueue').value.trim(),
         operator_extension: document.getElementById('operatorExtension').value.trim(),
         client_channel_template: document.getElementById('clientChannel').value.trim(),
-            caller_id: document.getElementById('callerId').value.trim(),
-        delay_no_answer_minutes: parseInt(document.getElementById('delayNoAnswer').value||'0',10),
-        delay_voicemail_minutes: parseInt(document.getElementById('delayVoicemail').value||'0',10),
-        operator_ring_seconds: parseInt(document.getElementById('operatorRing').value||'0',10),
-        originate_timeout: parseInt(document.getElementById('originateTimeout').value||'60',10),
-        max_retries: parseInt(document.getElementById('maxRetries').value||'0',10),
-        retry_delay_minutes: parseInt(document.getElementById('retryDelay').value||'0',10),
-        dedup_window_minutes: parseInt(document.getElementById('dedupWindow').value||'0',10),
+        caller_id: document.getElementById('callerId').value.trim(),
+        delay_no_answer_minutes: parseInt(document.getElementById('delayNoAnswer').value || '0', 10),
+        delay_voicemail_minutes: parseInt(document.getElementById('delayVoicemail').value || '0', 10),
+        operator_ring_seconds: parseInt(document.getElementById('operatorRing').value || '0', 10),
+        originate_timeout: parseInt(document.getElementById('originateTimeout').value || '60', 10),
+        max_retries: parseInt(document.getElementById('maxRetries').value || '0', 10),
+        retry_delay_minutes: parseInt(document.getElementById('retryDelay').value || '0', 10),
+        dedup_window_minutes: parseInt(document.getElementById('dedupWindow').value || '0', 10),
         work_hours_enabled: document.getElementById('workHoursEnabled').checked,
-        work_hours_start: document.getElementById('workStart').value || '09:00',
-        work_hours_end: document.getElementById('workEnd').value || '20:00',
-        work_days: document.getElementById('workDays').value.trim() || '1,2,3,4,5',
-        task_ttl_minutes: parseInt(document.getElementById('taskTtl').value||'0',10),
+        work_time_intervals: workIntervals.map((interval) => ({
+            start: normalizeTime(interval.start, '09:00'),
+            end: normalizeTime(interval.end, '20:00'),
+            days: parseWorkDays(interval.days)
+        })),
+        task_ttl_minutes: parseInt(document.getElementById('taskTtl').value || '0', 10),
         retry_backoff_minutes: document.getElementById('retryBackoff').value.trim(),
         max_calls_per_minute: parseInt(document.getElementById('maxPerMinute').value || '0', 10),
         max_concurrent_calls: parseInt(document.getElementById('maxPerCycle').value || '0', 10),
@@ -104,58 +616,98 @@ async function saveSettings() {
         busy_check_context: document.getElementById('busyContext').value.trim() || 'internal',
         busy_retry_seconds: parseInt(document.getElementById('busyRetry').value || '60', 10)
     };
+
+    if (body.work_hours_enabled && body.work_time_intervals.length === 0) {
+        alert('Добавь хотя бы один интервал рабочего времени или отключи это ограничение.');
+        return;
+    }
+
     try {
-        const r = await fetch('/api/callback/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-        const p = await r.json();
-        if (!r.ok) throw new Error(p.error || 'Ошибка сохранения');
+        const response = await fetch('/api/callback/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || 'Ошибка сохранения');
+        }
         alert('Настройки сохранены');
         loadSettings();
-    } catch (e) { alert(e.message || 'Ошибка сохранения настроек'); }
+    } catch (error) {
+        alert(error.message || 'Ошибка сохранения настроек');
+    }
 }
 
 async function testCallback() {
     const phone = prompt('Введите номер для тестового вызова:');
-    if (!phone) return;
+    if (!phone) {
+        return;
+    }
     try {
-        const r = await fetch('/api/callback/test', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ phone }) });
-        const p = await r.json();
-        if (!r.ok) throw new Error(p.error || 'Ошибка теста');
-        alert(p.message || 'Тестовая задача создана');
-        refreshData();
-    } catch (e) { alert(e.message); }
+        const response = await fetch('/api/callback/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone })
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || 'Ошибка теста');
+        }
+        alert(payload.message || 'Тестовая задача создана');
+    } catch (error) {
+        alert(error.message);
+    }
 }
 
-async function clearTasksMaint(){
-    if(!confirm('Удалить ВСЕ задачи обратного звонка и историю попыток? Это действие необратимо.')) return;
+async function clearTasksMaint() {
+    if (!confirm('Удалить ВСЕ задачи обратного звонка и историю попыток? Это действие необратимо.')) {
+        return;
+    }
     try {
-        const r = await fetch('/api/callback/tasks/clear', { method:'POST' });
-        const p = await r.json();
-        if(!r.ok) throw new Error(p.error || 'Ошибка');
-        alert('Удалено задач: '+(p.tasks||0)+', попыток: '+(p.attempts||0));
-    } catch(e){ alert(e.message); }
+        const response = await fetch('/api/callback/tasks/clear', { method: 'POST' });
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || 'Ошибка');
+        }
+        alert(`Удалено задач: ${payload.tasks || 0}, попыток: ${payload.attempts || 0}`);
+    } catch (error) {
+        alert(error.message);
+    }
 }
-async function clearCdr(){
-    if(!confirm('Очистить историю звонков (CDR): таблицы calls и segments? Это действие необратимо.')) return;
+
+async function clearCdr() {
+    if (!confirm('Очистить историю звонков (CDR): таблицы calls и segments? Это действие необратимо.')) {
+        return;
+    }
     try {
-        const r = await fetch('/api/maintenance/clear-cdr', { method:'POST' });
-        const p = await r.json();
-        if(!r.ok) throw new Error(p.error || 'Ошибка');
-        alert('Удалено звонков: '+(p.calls||0)+', сегментов: '+(p.segments||0));
-    } catch(e){ alert(e.message); }
+        const response = await fetch('/api/maintenance/clear-cdr', { method: 'POST' });
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || 'Ошибка');
+        }
+        alert(`Удалено звонков: ${payload.calls || 0}, сегментов: ${payload.segments || 0}`);
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+function switchTab(id) {
+    document.querySelectorAll('.tab').forEach((tab) => {
+        tab.classList.toggle('active', tab.dataset.tab === id);
+    });
+    document.querySelectorAll('.tab-panel').forEach((panel) => {
+        panel.classList.toggle('active', panel.id === `panel-${id}`);
+    });
+    localStorage.setItem('cbSettingsTab', id);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
-});
-
-function switchTab(id){
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + id));
-    localStorage.setItem('cbSettingsTab', id);
-}
-window.addEventListener('DOMContentLoaded', function(){
-    var saved = localStorage.getItem('cbSettingsTab');
-    if (saved && document.getElementById('panel-' + saved)) switchTab(saved);
+    const savedTab = localStorage.getItem('cbSettingsTab');
+    if (savedTab && document.getElementById(`panel-${savedTab}`)) {
+        switchTab(savedTab);
+    }
 });
 </script>
 {% endblock %}

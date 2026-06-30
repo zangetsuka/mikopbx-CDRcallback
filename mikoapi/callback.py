@@ -31,11 +31,11 @@ import re
 import threading
 import socket
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from .config import AppConfig, CALL_TYPES
-from .database import Database
+from .database import Database, DATETIME_FORMAT
 
 
 def normalize_phone(phone: str | None) -> str:
@@ -43,6 +43,174 @@ def normalize_phone(phone: str | None) -> str:
         return ""
     cleaned = re.sub(r"\D+", "", phone)
     return cleaned
+
+
+DEFAULT_WORK_DAYS = [1, 2, 3, 4, 5]
+
+
+def _normalize_time_value(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text[:5], "%H:%M").strftime("%H:%M")
+    except ValueError:
+        return None
+
+
+def _parse_weekday_values(value: Any, default: list[int] | None = None) -> list[int]:
+    if isinstance(value, str):
+        raw_items = value.replace(";", ",").split(",")
+    elif isinstance(value, (list, tuple, set)):
+        raw_items = list(value)
+    elif value is None:
+        raw_items = []
+    else:
+        raw_items = [value]
+
+    days: list[int] = []
+    for item in raw_items:
+        try:
+            day = int(str(item).strip())
+        except (TypeError, ValueError):
+            continue
+        if 1 <= day <= 7 and day not in days:
+            days.append(day)
+
+    days.sort()
+    if days:
+        return days
+    return list(default) if default is not None else []
+
+
+def format_work_days(value: Any) -> str:
+    return ",".join(str(day) for day in _parse_weekday_values(value))
+
+
+def normalize_work_time_intervals(
+    raw: Any,
+    default_days: Any = None,
+) -> list[dict[str, Any]]:
+    if isinstance(raw, list):
+        source_items = raw
+    elif isinstance(raw, dict):
+        source_items = [raw]
+    else:
+        source_items = []
+
+    fallback_days = _parse_weekday_values(default_days, DEFAULT_WORK_DAYS)
+    intervals: list[dict[str, Any]] = []
+    for item in source_items:
+        if not isinstance(item, dict):
+            continue
+        start = _normalize_time_value(
+            item.get("start") or item.get("from") or item.get("work_hours_start")
+        )
+        end = _normalize_time_value(
+            item.get("end") or item.get("to") or item.get("work_hours_end")
+        )
+        if not start or not end:
+            continue
+
+        days = _parse_weekday_values(item.get("days"), fallback_days)
+        intervals.append(
+            {
+                "start": start,
+                "end": end,
+                "days": days or list(DEFAULT_WORK_DAYS),
+            }
+        )
+    return intervals
+
+
+def get_work_time_intervals(settings: dict[str, Any]) -> list[dict[str, Any]]:
+    intervals = normalize_work_time_intervals(
+        settings.get("work_time_intervals"),
+        settings.get("work_days"),
+    )
+    if intervals:
+        return intervals
+
+    legacy_interval = {
+        "start": settings.get("work_hours_start") or "09:00",
+        "end": settings.get("work_hours_end") or "20:00",
+        "days": settings.get("work_days") or DEFAULT_WORK_DAYS,
+    }
+    return normalize_work_time_intervals([legacy_interval], legacy_interval["days"])
+
+
+def _iter_work_time_occurrences(
+    settings: dict[str, Any],
+    anchor: datetime,
+    days_ahead: int = 8,
+):
+    intervals = get_work_time_intervals(settings)
+    if not intervals:
+        return
+
+    start_date = anchor.date() - timedelta(days=1)
+    for offset in range(max(1, days_ahead + 2)):
+        day_date = start_date + timedelta(days=offset)
+        weekday = day_date.isoweekday()
+        for interval in intervals:
+            allowed_days = _parse_weekday_values(
+                interval.get("days"),
+                DEFAULT_WORK_DAYS,
+            )
+            if allowed_days and weekday not in allowed_days:
+                continue
+            try:
+                start_time = datetime.strptime(str(interval["start"]), "%H:%M").time()
+                end_time = datetime.strptime(str(interval["end"]), "%H:%M").time()
+            except (KeyError, ValueError):
+                continue
+
+            start_dt = datetime.combine(day_date, start_time)
+            if start_time <= end_time:
+                end_dt = datetime.combine(day_date, end_time)
+            else:
+                end_dt = datetime.combine(day_date + timedelta(days=1), end_time)
+            yield start_dt, end_dt
+
+
+def next_allowed_work_time(
+    settings: dict[str, Any],
+    requested_at: datetime,
+) -> datetime:
+    if not settings.get("work_hours_enabled", False):
+        return requested_at
+
+    occurrences = sorted(
+        _iter_work_time_occurrences(settings, requested_at),
+        key=lambda item: item[0],
+    )
+    for start_dt, end_dt in occurrences:
+        if start_dt <= requested_at <= end_dt:
+            return requested_at
+        if requested_at < start_dt:
+            return start_dt
+    return requested_at
+
+
+def build_task_schedule(
+    settings: dict[str, Any],
+    delay_seconds: int,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    created_at = now or datetime.now()
+    requested_at = created_at + timedelta(seconds=max(0, int(delay_seconds)))
+    scheduled_at = next_allowed_work_time(settings, requested_at)
+    return {
+        "created_at": created_at,
+        "requested_at": requested_at,
+        "scheduled_at": scheduled_at,
+        "delay_seconds": max(
+            0,
+            int((scheduled_at - created_at).total_seconds()),
+        ),
+        "deferred_to_work_hours": scheduled_at > requested_at,
+        "schedule_reason": "work_hours" if scheduled_at > requested_at else None,
+    }
 
 
 def _parse_call_time(value):
@@ -622,26 +790,7 @@ class CallbackWorker:
         if not settings.get("work_hours_enabled", False):
             return True
         now = datetime.now()
-        allowed_days = set()
-        for part in str(settings.get("work_days", "1,2,3,4,5")).split(","):
-            part = part.strip()
-            if part.isdigit():
-                allowed_days.add(int(part))
-        if allowed_days and now.isoweekday() not in allowed_days:
-            return False
-        try:
-            start = datetime.strptime(
-                str(settings.get("work_hours_start", "09:00")), "%H:%M"
-            ).time()
-            end = datetime.strptime(
-                str(settings.get("work_hours_end", "20:00")), "%H:%M"
-            ).time()
-        except ValueError:
-            return True
-        current = now.time()
-        if start <= end:
-            return start <= current <= end
-        return current >= start or current <= end
+        return next_allowed_work_time(settings, now) == now
 
     def _effective_settings(self) -> dict[str, Any]:
         return self.db.get_callback_settings(self.config.callback.settings_defaults())
@@ -746,7 +895,11 @@ class CallbackWorker:
             else:
                 priority = 5
                 delay_minutes = delay_no_answer
-            delay_seconds = max(0, delay_minutes) * 60
+            schedule = build_task_schedule(
+                settings,
+                max(0, delay_minutes) * 60,
+            )
+            delay_seconds = schedule["delay_seconds"]
 
             task_id = self.db.create_callback_task(
                 phone=phone,
@@ -757,8 +910,18 @@ class CallbackWorker:
                 priority=priority,
                 source="auto",
                 max_retries=max_retries,
+                created_at=schedule["created_at"].strftime(DATETIME_FORMAT),
+                requested_at=schedule["requested_at"].strftime(DATETIME_FORMAT),
+                scheduled_at=schedule["scheduled_at"].strftime(DATETIME_FORMAT),
+                schedule_reason=schedule["schedule_reason"],
             )
             self.db.mark_processed(int(call["id"]))
+            if schedule["deferred_to_work_hours"]:
+                self.logger.info(
+                    "Deferred callback task #%s to next work window at %s",
+                    task_id,
+                    schedule["scheduled_at"].strftime("%Y-%m-%d %H:%M:%S"),
+                )
             self.logger.info(
                 "Created callback task #%s for call #%s", task_id, call["id"]
             )
@@ -825,6 +988,7 @@ class CallbackWorker:
             return
         if not self._within_work_hours(settings):
             return
+        task_ttl_minutes = _to_int(settings.get("task_ttl_minutes"), 0)
         due_tasks = self.db.get_due_callback_tasks(limit=20)
         max_per_cycle = _to_int(settings.get("max_concurrent_calls"), 0)
         max_per_minute = _to_int(settings.get("max_calls_per_minute"), 0)

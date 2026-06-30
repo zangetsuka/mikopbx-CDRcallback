@@ -153,9 +153,19 @@ class Database:
                 """
             )
 
+            self._ensure_callback_task_columns(cursor)
+
             conn.commit()
 
         self.logger.info("Database initialized at %s", self.db_path)
+
+    def _ensure_callback_task_columns(self, cursor: sqlite3.Cursor) -> None:
+        cursor.execute("PRAGMA table_info(callback_tasks)")
+        columns = {str(row[1]) for row in cursor.fetchall()}
+        if "requested_at" not in columns:
+            cursor.execute("ALTER TABLE callback_tasks ADD COLUMN requested_at TEXT")
+        if "schedule_reason" not in columns:
+            cursor.execute("ALTER TABLE callback_tasks ADD COLUMN schedule_reason TEXT")
 
     def save_call(self, call_data: dict[str, Any], call_type: str) -> int | None:
         linkedid = call_data.get("linkedid")
@@ -440,11 +450,15 @@ class Database:
         source: str = "manual",
         operator_extension: str | None = None,
         max_retries: int = 3,
+        created_at: str | None = None,
+        requested_at: str | None = None,
+        scheduled_at: str | None = None,
+        schedule_reason: str | None = None,
     ) -> int:
-        scheduled_at = (
+        created_at_value = created_at or _now_str()
+        scheduled_at_value = scheduled_at or (
             datetime.now() + timedelta(seconds=max(0, int(delay_seconds)))
         ).strftime(DATETIME_FORMAT)
-        created_at = _now_str()
 
         with self._connect() as conn:
             cursor = conn.cursor()
@@ -470,8 +484,9 @@ class Database:
                 INSERT INTO callback_tasks (
                     phone, call_type, call_id, linkedid, source, status,
                     priority, delay_seconds, operator_extension, scheduled_at,
-                    retry_count, max_retries, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, 0, ?, ?, ?)
+                    retry_count, max_retries, created_at, updated_at,
+                    requested_at, schedule_reason
+                ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
                 """,
                 (
                     phone,
@@ -482,10 +497,12 @@ class Database:
                     max(1, min(int(priority), 10)),
                     max(0, int(delay_seconds)),
                     operator_extension,
-                    scheduled_at,
+                    scheduled_at_value,
                     max(1, int(max_retries)),
-                    created_at,
-                    created_at,
+                    created_at_value,
+                    created_at_value,
+                    requested_at,
+                    schedule_reason,
                 ),
             )
             task_id = int(cursor.lastrowid)
